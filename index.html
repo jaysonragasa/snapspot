@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SnapSpot - Share Your World</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet.js (for OpenStreetMap) CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    
+    <!-- Leaflet MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://css.gg/css?family=Inter:400,500,600,700" rel="stylesheet">
+    
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Ensure map takes full height */
+        #map {
+            height: 100vh;
+            width: 100vw;
+            z-index: 10;
+        }
+        /* Custom transition for modals */
+        .modal-transition {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .modal-hidden {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+        .modal-visible {
+            opacity: 1;
+            transform: scale(1);
+            pointer-events: auto;
+        }
+        /* Base styles for custom markers */
+        .custom-marker {
+            border-radius: 9999px;
+            padding: 6px;
+            border: 2px solid white;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .custom-marker svg {
+            width: 20px;
+            height: 20px;
+            color: white;
+        }
+        .camera-marker-icon {
+            background: #2563eb; /* Tailwind blue-600 */
+        }
+        .note-marker-icon {
+            background: #f97316; /* Tailwind orange-500 */
+        }
+        /* Custom image marker icon styles */
+        .image-marker-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px; /* Rounded square */
+            border: 2px solid white;
+            background-color: #eee; /* Fallback color */
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .image-marker-icon img {
+            width: 20px;
+            height: 20px;
+            object-fit: cover;
+        }
+        /* Glassmorphism for Leaflet Controls */
+        .leaflet-control-zoom, .leaflet-control-attribution, .leaflet-control-custom {
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            background: rgba(255, 255, 255, 0.6) !important;
+            border-radius: 8px !important;
+            border: 1px solid rgba(255, 255, 255, 0.4) !important;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) !important;
+        }
+        .leaflet-control-zoom a, .leaflet-control-custom a {
+            color: black !important;
+            background-color: transparent !important;
+            border-radius: 6px;
+        }
+        .leaflet-control-zoom a:hover, .leaflet-control-custom a:hover {
+            background-color: rgba(255, 255, 255, 0.4) !important;
+        }
+        .leaflet-control-attribution {
+            padding: 2px 6px !important;
+        }
+         .leaflet-control-attribution a {
+            color: #333 !important;
+        }
+        /* --- FIX for control visibility on mobile --- */
+        .leaflet-control-container {
+            z-index: 1000;
+        }
+        /* Custom popup style */
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        .leaflet-popup-content {
+            margin: 12px !important;
+            min-width: 150px;
+        }
+        .gallery-note-item {
+            aspect-ratio: 1 / 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 overflow-hidden">
+
+    <!-- Main Map Container -->
+    <div id="map"></div>
+
+    <!-- Header / App Name -->
+    <header class="absolute top-0 left-0 right-0 z-20 p-4 flex justify-center">
+        <div class="backdrop-blur-lg border border-white/40 rounded-full shadow-lg px-6 py-2">
+            <h1 class="text-xl font-bold text-gray-800">SnapSpot</h1>
+        </div>
+    </header>
+
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="modal-transition modal-hidden fixed inset-0 bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-30 p-4">
+        <div class="bg-white/50 backdrop-blur-lg border border-white/40 rounded-2xl shadow-2xl p-6 md:p-8 w-full max-w-md mx-auto transform">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">Share a New Spot</h2>
+                <button id="close-modal-button" class="text-gray-500 hover:text-gray-800">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <form id="upload-form">
+                <div class="space-y-4">
+                    
+                    <!-- File Upload Buttons -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Add a Photo (Optional)</label>
+                        <div class="mt-1 grid grid-cols-2 gap-4">
+                            <button type="button" id="camera-upload-btn" class="flex flex-col items-center justify-center p-4 bg-white/60 border border-gray-300 rounded-md shadow-sm hover:bg-gray-50/80 transition-colors">
+                                <span id="camera-icon-container"></span>
+                                <span class="mt-2 text-sm font-medium text-gray-700">Use Camera</span>
+                            </button>
+                             <button type="button" id="photo-upload-btn" class="flex flex-col items-center justify-center p-4 bg-white/60 border border-gray-300 rounded-md shadow-sm hover:bg-gray-50/80 transition-colors">
+                                <span id="photo-icon-container"></span>
+                                <span class="mt-2 text-sm font-medium text-gray-700">Upload Photo</span>
+                            </button>
+                        </div>
+                        <input type="file" id="photo" name="photo" accept="image/*" class="hidden">
+                        <div id="file-preview" class="mt-2 text-sm text-gray-600"></div>
+                    </div>
+
+                    <!-- Uploader's Name -->
+                    <div>
+                        <label for="uploaderName" class="block text-sm font-medium text-gray-700">Your Name</label>
+                        <input type="text" id="uploaderName" name="uploaderName" required placeholder="What should we call you?" class="mt-1 block w-full px-3 py-2 bg-white/80 border border-gray-300 rounded-md shadow-sm placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                    </div>
+                    
+                    <!-- Description -->
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700">Description or Note</label>
+                        <textarea id="description" name="description" rows="3" required class="mt-1 block w-full px-3 py-2 bg-white/80 border border-gray-300 rounded-md shadow-sm placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+                    </div>
+
+                    <!-- Hidden fields for coordinates -->
+                    <input type="hidden" id="latitude" name="latitude">
+                    <input type="hidden" id="longitude" name="longitude">
+
+                </div>
+				<div class="mt-4">
+                    <p class="text-xs text-gray-600 text-center">
+                        Note: We securely store your uploaded images and never share or sell them to third parties. A watermark with your provided name will be added to each image. Please ensure you have the right to upload the content, as you are responsible for it. The location where you tap on the map is saved to place the spot correctly.
+                    </p>
+                </div>
+                <div class="mt-6">
+                    <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75 transition-all duration-150 ease-in-out disabled:bg-gray-400">
+                        Upload Spot
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Full-Screen Image Viewer Modal -->
+    <div id="image-viewer" class="modal-transition modal-hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4">
+        <div class="relative w-full h-full flex flex-col items-center justify-center">
+             <button id="close-viewer-btn" class="absolute top-4 right-4 text-white/80 hover:text-white z-50">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <img id="viewer-img" src="" class="max-h-[75vh] max-w-[90vw] object-contain rounded-lg shadow-2xl">
+            <div id="viewer-info" class="w-full max-w-3xl text-white text-center mt-4 p-4 bg-black/40 backdrop-blur-md rounded-lg"></div>
+        </div>
+    </div>
+
+    <!-- Gallery Modal -->
+    <div id="gallery-modal" class="modal-transition modal-hidden fixed inset-0 bg-black/90 backdrop-blur-sm z-40 p-4 overflow-y-auto">
+        <div class="relative w-full max-w-6xl mx-auto">
+            <button id="close-gallery-btn" class="fixed top-4 right-4 text-white/80 hover:text-white z-50">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <h2 class="text-3xl font-bold text-white text-center my-4">Cluster Gallery</h2>
+            <div id="gallery-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+        </div>
+    </div>
+    
+    <!-- Firebase and Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
+    <script type="module">
+        // Firebase Imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, serverTimestamp, increment, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        /**
+         * @module Config
+         * Centralized configuration for the application.
+         */
+        const Config = {
+            // Use environment's config if available, otherwise fall back to user-provided config
+            firebase: typeof __firebase_config !== 'undefined' 
+                ? JSON.parse(__firebase_config) 
+                : {
+                    apiKey: "AIzaSyAr7WVWVQG8zHsexf53pycaOqZeJ8hj8fc",
+                    authDomain: "snapspot-59933.firebaseapp.com",
+                    projectId: "snapspot-59933",
+                    storageBucket: "snapspot-59933.firebasestorage.app",
+                    messagingSenderId: "369585987459",
+                    appId: "1:369585987459:web:a09abfb7bea875c5e4a0b6",
+                    measurementId: "G-JCYCDCTB41"
+                },
+            appId: typeof __app_id !== 'undefined' ? __app_id : 'snapspot-default',
+            initialAuthToken: typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null,
+            map: {
+                initialCoords: [14.5995, 120.9842], // Manila
+                initialZoom: 13,
+                maxZoom: 19,
+                tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                useImageAsMarker: true // Global toggle for marker style
+            },
+            api: {
+                reverseGeocode: 'https://api.bigdatacloud.net/data/reverse-geocode-client'
+            },
+            imageProcessing: {
+                maxDimension: 1024,
+                jpegQuality: 0.9
+            },
+            icons: {
+                // Icons for map markers
+                cameraMarker: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 8a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 018.07 3h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0016.07 6H17a2 2 0 012 2v7a2 2 0 01-2 2H3a2 2 0 01-2-2V8zm13.5 3a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM10 14a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" clip-rule="evenodd" /></svg>`,
+                noteMarker: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" /></svg>`,
+                // Icon for "Current Location" button
+                location: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line></svg>`,
+                // Icons for upload form
+                uploadCamera: `<svg class="h-8 w-8 text-gray-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 8a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 018.07 3h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0016.07 6H17a2 2 0 012 2v7a2 2 0 01-2 2H3a2 2 0 01-2-2V8zm13.5 3a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM10 14a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" clip-rule="evenodd" /></svg>`,
+                uploadPhoto: `<svg class="h-8 w-8 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>`
+            }
+        };
+
+        /**
+         * @module Utils
+         * Helper functions for various tasks.
+         */
+        const Utils = {
+            truncateText(str, n) {
+                if (!str) return '';
+                return (str.length > n) ? str.slice(0, n - 1) + '...' : str;
+            },
+            getRandomHexColor() {
+                const letters = '0123456789ABCDEF';
+                let color = '#';
+                for (let i = 0; i < 6; i++) {
+                    color += letters[Math.floor(Math.random() * 16)];
+                }
+                return color;
+            },
+            getContrastColor(hex) {
+                if (!hex) return '#000000';
+                const r = parseInt(hex.slice(1, 3), 16);
+                const g = parseInt(hex.slice(3, 5), 16);
+                const b = parseInt(hex.slice(5, 7), 16);
+                // http://www.w3.org/TR/AERT#color-contrast
+                const brightness = Math.round(((r * 299) + (g * 587) + (b * 114)) / 1000);
+                return (brightness > 125) ? '#000000' : '#FFFFFF';
+            }
+        };
+
+        /**
+         * @module FirebaseService
+         * Handles all interactions with Firebase services (Auth, Firestore).
+         */
+        const FirebaseService = {
+            app: null,
+            auth: null,
+            db: null,
+            userId: null,
+
+            async init(onAuthStateChangeCallback) {
+                try {
+                    this.app = initializeApp(Config.firebase);
+                    this.auth = getAuth(this.app);
+                    this.db = getFirestore(this.app);
+
+                    onAuthStateChanged(this.auth, (user) => {
+                        if (user) {
+                            this.userId = user.uid;
+                            console.log("User authenticated:", this.userId);
+                            onAuthStateChangeCallback(this.userId);
+                        }
+                    });
+
+                    if (Config.initialAuthToken) {
+                        await signInWithCustomToken(this.auth, Config.initialAuthToken);
+                    } else {
+                        await signInAnonymously(this.auth);
+                    }
+                } catch (error) {
+                    console.error("Firebase initialization failed:", error);
+                }
+            },
+
+            listenForSpots(callback) {
+                const spotsCollection = collection(this.db, 'artifacts', Config.appId, 'public', 'data', 'spots');
+                onSnapshot(spotsCollection, callback);
+            },
+
+            async saveSpot(spotData) {
+                if (!this.userId) throw new Error("User not authenticated.");
+                const spotsCollection = collection(this.db, 'artifacts', Config.appId, 'public', 'data', 'spots');
+                return addDoc(spotsCollection, {
+                    ...spotData,
+                    authorId: this.userId,
+                    createdAt: serverTimestamp(),
+                    thumbsUp: 0,
+                    thumbsDown: 0,
+                    voters: {}
+                });
+            },
+
+            async getSpot(spotId) {
+                 const spotRef = doc(this.db, 'artifacts', Config.appId, 'public', 'data', 'spots', spotId);
+                 return getDoc(spotRef);
+            },
+
+            async recordVote(spotId, newVote, previousVote) {
+                 if (!this.userId) throw new Error("User not authenticated for voting.");
+                 const spotRef = doc(this.db, 'artifacts', Config.appId, 'public', 'data', 'spots', spotId);
+                 const updatePayload = {};
+                 
+                 updatePayload[`voters.${this.userId}`] = newVote;
+
+                 // If changing a vote
+                 if (previousVote && previousVote !== newVote) {
+                     if (newVote === 'up') {
+                         updatePayload.thumbsUp = increment(1);
+                         updatePayload.thumbsDown = increment(-1);
+                     } else { // newVote is 'down'
+                         updatePayload.thumbsUp = increment(-1);
+                         updatePayload.thumbsDown = increment(1);
+                     }
+                 } 
+                 // If casting a brand new vote
+                 else if (!previousVote) {
+                     if (newVote === 'up') {
+                         updatePayload.thumbsUp = increment(1);
+                     } else { // newVote is 'down'
+                         updatePayload.thumbsDown = increment(1);
+                     }
+                 }
+                 // If previousVote === newVote, we don't need to change counts,
+                 // but we still update the voter record (though the App logic prevents this call).
+                 
+                 return updateDoc(spotRef, updatePayload);
+            }
+        };
+
+        /**
+         * @module MapService
+         * Manages the Leaflet map instance and its layers.
+         */
+        const MapService = {
+            map: null,
+            markers: null,
+            userLocationMarker: null,
+
+            init(onMapClick, onClusterClick, onLocationButtonClick) {
+                this.map = L.map('map').setView(Config.map.initialCoords, Config.map.initialZoom);
+                L.tileLayer(Config.map.tileLayer, {
+                    maxZoom: Config.map.maxZoom,
+                    attribution: Config.map.attribution
+                }).addTo(this.map);
+                
+                this.markers = L.markerClusterGroup({
+                    zoomToBoundsOnClick: false // Disable default zoom behavior
+                });
+                this.map.addLayer(this.markers);
+
+                this.map.on('click', onMapClick);
+                this.markers.on('clusterclick', onClusterClick);
+                
+                // Add custom 'Current Location' control
+                const LocationControl = L.Control.extend({
+                    options: { position: 'bottomleft' },
+                    onAdd: function (map) {
+                        const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control leaflet-control-custom');
+                        container.innerHTML = `<a href="#" title="Show my location" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">${Config.icons.location}</a>`;
+                        L.DomEvent.on(container, 'click', (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            onLocationButtonClick();
+                        });
+                        return container;
+                    }
+                });
+                this.map.addControl(new LocationControl());
+            },
+
+            renderSpots(spots) {
+                this.markers.clearLayers();
+                const newMarkers = [];
+                spots.forEach(spot => {
+                    if (spot.data.location && spot.data.location.latitude && spot.data.location.longitude) {
+                        let iconHtml;
+                        let iconClassName = '';
+                        let iconSize = [36, 36];
+                        let iconAnchor = [18, 18];
+
+                        if (spot.data.spotType === 'note') {
+                            iconHtml = `<div class="custom-marker note-marker-icon">${Config.icons.noteMarker}</div>`;
+                        } else if (Config.map.useImageAsMarker && spot.data.photoDataUrl) {
+                            iconHtml = `<div class="image-marker-icon"><img src="${spot.data.photoDataUrl}" alt="Spot thumbnail"></div>`;
+                            iconSize = [24, 24];
+                            iconAnchor = [12, 12];
+                        } else {
+                            iconHtml = `<div class="custom-marker camera-marker-icon">${Config.icons.cameraMarker}</div>`;
+                        }
+                        
+                        const customIcon = L.divIcon({
+                            html: iconHtml,
+                            className: iconClassName,
+                            iconSize: iconSize,
+                            iconAnchor: iconAnchor
+                        });
+
+                        const marker = L.marker([spot.data.location.latitude, spot.data.location.longitude], {
+                            icon: customIcon,
+                            spotId: spot.id,
+                            spotData: spot.data
+                        });
+                        
+                        let popupContent = '';
+                        if (spot.data.spotType === 'note') {
+                            popupContent = `
+                                <div class="p-1 cursor-pointer popup-note" data-spot-id="${spot.id}">
+                                    <p class="font-semibold text-gray-800">${spot.data.uploaderName}</p>
+                                    <p class="text-gray-600">${Utils.truncateText(spot.data.description, 100)}</p>
+                                    <p class="text-xs text-blue-500 mt-1">Click to view full note</p>
+                                </div>`;
+                        } else {
+                            popupContent = `
+                                <div class="text-center">
+                                    <img src="${spot.data.photoDataUrl}" alt="${spot.data.description || 'Spot image'}" class="w-full h-auto rounded-md cursor-pointer popup-image" style="max-width: 200px; max-height: 200px; object-fit: cover;" data-spot-id="${spot.id}">
+                                    <p class="mt-2 text-sm text-gray-700">${Utils.truncateText(spot.data.description, 50) || 'Click image to view full size.'}</p>
+                                </div>`;
+                        }
+
+                        marker.bindPopup(popupContent);
+
+                        marker.on('popupopen', (e) => {
+                            const popup = e.popup;
+                            const img = popup.getElement().querySelector('.popup-image');
+                            if (img && !img.complete) {
+                                img.onload = () => {
+                                    popup.update();
+                                }
+                            }
+                        });
+
+                        newMarkers.push(marker);
+                    }
+                });
+                this.markers.addLayers(newMarkers);
+            },
+
+            panTo(location, zoom = 18) {
+                this.map.flyTo([location.latitude, location.longitude], zoom);
+            },
+            
+            showUserLocationMarker(location) {
+                if (this.userLocationMarker) {
+                    this.map.removeLayer(this.userLocationMarker);
+                }
+                this.userLocationMarker = L.circleMarker([location.latitude, location.longitude], {
+                    radius: 8,
+                    fillColor: "#2563eb",
+                    color: "#fff",
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(this.map);
+
+                setTimeout(() => {
+                    if (this.userLocationMarker) {
+                        this.map.removeLayer(this.userLocationMarker);
+                        this.userLocationMarker = null;
+                    }
+                }, 10000);
+            }
+        };
+
+        /**
+         * @module UIService
+         * Handles DOM manipulations and UI event listeners.
+         */
+        const UIService = {
+            uploadModal: null, closeModalButton: null, uploadForm: null, latInput: null, lonInput: null,
+            imageViewer: null, closeViewerBtn: null, viewerImg: null, viewerInfo: null,
+            galleryModal: null, closeGalleryBtn: null, galleryGrid: null,
+            photoInput: null, filePreview: null,
+            
+            init(onFormSubmit) {
+                // Upload Modal
+                this.uploadModal = document.getElementById('upload-modal');
+                this.closeModalButton = document.getElementById('close-modal-button');
+                this.uploadForm = document.getElementById('upload-form');
+                this.latInput = document.getElementById('latitude');
+                this.lonInput = document.getElementById('longitude');
+                this.photoInput = document.getElementById('photo');
+                this.filePreview = document.getElementById('file-preview');
+                const cameraBtn = document.getElementById('camera-upload-btn');
+                const photoBtn = document.getElementById('photo-upload-btn');
+                
+                // Image Viewer
+                this.imageViewer = document.getElementById('image-viewer');
+                this.closeViewerBtn = document.getElementById('close-viewer-btn');
+                this.viewerImg = document.getElementById('viewer-img');
+                this.viewerInfo = document.getElementById('viewer-info');
+                
+                // Gallery Modal
+                this.galleryModal = document.getElementById('gallery-modal');
+                this.closeGalleryBtn = document.getElementById('close-gallery-btn');
+                this.galleryGrid = document.getElementById('gallery-grid');
+                
+                // Populate Icon Containers
+                document.getElementById('camera-icon-container').innerHTML = Config.icons.uploadCamera;
+                document.getElementById('photo-icon-container').innerHTML = Config.icons.uploadPhoto;
+
+                // Event Listeners
+                this.closeModalButton.addEventListener('click', () => this.toggleUploadModal(false));
+                this.uploadModal.addEventListener('click', (e) => {
+                    if (e.target === this.uploadModal) this.toggleUploadModal(false);
+                });
+                this.uploadForm.addEventListener('submit', onFormSubmit);
+
+                this.closeViewerBtn.addEventListener('click', () => this.toggleImageViewer(false));
+                this.closeGalleryBtn.addEventListener('click', () => this.toggleGallery(false));
+                
+                cameraBtn.addEventListener('click', () => {
+                    this.photoInput.removeAttribute('capture');
+                    this.photoInput.setAttribute('capture', 'environment');
+                    this.photoInput.click();
+                });
+
+                photoBtn.addEventListener('click', () => {
+                    this.photoInput.removeAttribute('capture');
+                    this.photoInput.click();
+                });
+
+                this.photoInput.addEventListener('change', (e) => {
+                    if (e.target.files && e.target.files[0]) {
+                        this.filePreview.textContent = `Selected: ${e.target.files[0].name}`;
+                    } else {
+                        this.filePreview.textContent = '';
+                    }
+                });
+            },
+
+            toggleUploadModal(show, latlng = null) {
+                if (show && latlng) {
+                    this.latInput.value = latlng.lat;
+                    this.lonInput.value = latlng.lng;
+                    const savedName = localStorage.getItem('snapspot_uploader_name');
+                    if (savedName) this.uploadForm.uploaderName.value = savedName;
+                    this.uploadModal.classList.remove('modal-hidden');
+                    this.uploadModal.classList.add('modal-visible');
+                } else {
+                    this.uploadModal.classList.add('modal-hidden');
+                    this.uploadModal.classList.remove('modal-visible');
+                    this.uploadForm.reset();
+                    this.filePreview.textContent = '';
+                }
+            },
+
+            toggleImageViewer(show, spotId = null, spot = null, onShowOnMap = () => {}) {
+                 if (show && spot && spotId) {
+                    const locationHtml = (spot.city && spot.city !== 'Unknown') || (spot.country && spot.country !== 'Unknown')
+                        ? `<p class="text-xs text-gray-400 mt-1">${spot.city}, ${spot.country}</p>`
+                        : '';
+                    
+                    const showOnMapBtnId = `show-on-map-${spotId}`;
+                    this.viewerInfo.innerHTML = `
+                        <h3 class="font-bold text-lg">${spot.uploaderName}</h3>
+                        <p class="text-gray-300 text-sm mt-1">${spot.description || ''}</p>
+                        ${locationHtml}
+                        <div class="mt-3 flex items-center justify-center text-lg space-x-6">
+                            <button data-spot-id="${spotId}" data-vote="up" class="vote-btn hover:text-green-400 transition-transform transform hover:scale-110">👍 ${spot.thumbsUp}</button>
+                            <button data-spot-id="${spotId}" data-vote="down" class="vote-btn hover:text-red-400 transition-transform transform hover:scale-110">👎 ${spot.thumbsDown}</button>
+                            <button id="${showOnMapBtnId}" class="text-blue-400 hover:text-blue-300 text-sm">Show on Map</button>
+                        </div>`;
+                    
+                    if (spot.spotType === 'note') {
+                        this.viewerImg.style.display = 'none';
+                    } else {
+                        this.viewerImg.style.display = 'block';
+                        this.viewerImg.src = spot.photoDataUrl;
+                    }
+
+                    // Attach event listener for the new button
+                     setTimeout(() => { // Use timeout to ensure element exists in DOM
+                        document.getElementById(showOnMapBtnId).addEventListener('click', () => {
+                            this.toggleImageViewer(false);
+                            onShowOnMap(spot.location);
+                        });
+                     }, 0);
+
+                    this.imageViewer.classList.remove('modal-hidden');
+                    this.imageViewer.classList.add('modal-visible');
+                } else {
+                    this.imageViewer.classList.add('modal-hidden');
+                    this.imageViewer.classList.remove('modal-visible');
+                    this.viewerImg.src = "";
+                    this.viewerInfo.innerHTML = "";
+                }
+            },
+
+            toggleGallery(show, spots = [], onSpotClick) {
+                 if (show && spots.length > 0) {
+                    this.galleryGrid.innerHTML = ''; // Clear previous items
+                    spots.forEach(spot => {
+                        let galleryItem;
+                        if (spot.data.spotType === 'note') {
+                            galleryItem = document.createElement('div');
+                            const bgColor = Utils.getRandomHexColor();
+                            const textColor = Utils.getContrastColor(bgColor);
+                            
+                            galleryItem.className = 'gallery-note-item w-full h-full rounded-lg cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center p-2 text-center text-sm';
+                            galleryItem.style.backgroundColor = bgColor;
+                            galleryItem.style.color = textColor;
+                            galleryItem.textContent = Utils.truncateText(spot.data.description, 50);
+                        } else {
+                            galleryItem = document.createElement('img');
+                            galleryItem.src = spot.data.photoDataUrl;
+                            galleryItem.className = 'w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity';
+                        }
+                        
+                        galleryItem.addEventListener('click', () => {
+                            this.toggleGallery(false);
+                            onSpotClick(spot.id, spot.data);
+                        });
+                        this.galleryGrid.appendChild(galleryItem);
+                    });
+                    this.galleryModal.classList.remove('modal-hidden');
+                    this.galleryModal.classList.add('modal-visible');
+                } else {
+                    this.galleryModal.classList.add('modal-hidden');
+                    this.galleryModal.classList.remove('modal-visible');
+                    this.galleryGrid.innerHTML = '';
+                }
+            },
+            
+            getFormData() {
+                const formData = new FormData(this.uploadForm);
+                return {
+                    uploaderName: formData.get('uploaderName'),
+                    description: formData.get('description'),
+                    photo: formData.get('photo'),
+                    latitude: parseFloat(formData.get('latitude')),
+                    longitude: parseFloat(formData.get('longitude')),
+                };
+            },
+
+            setFormSubmitting(isSubmitting, message = 'Upload Spot') {
+                const submitButton = this.uploadForm.querySelector('button[type="submit"]');
+                submitButton.disabled = isSubmitting;
+                submitButton.textContent = message;
+            }
+        };
+
+        /**
+         * @module ImageProcessor
+         * Handles client-side image manipulation.
+         */
+        const ImageProcessor = {
+            process(file, watermarkText) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const canvas = this.createWatermarkedCanvas(img, watermarkText);
+                            canvas.toBlob((blob) => {
+                                if (blob) resolve(blob);
+                                else reject(new Error('Canvas to Blob conversion failed'));
+                            }, 'image/jpeg', Config.imageProcessing.jpegQuality);
+                        };
+                        img.onerror = () => reject(new Error('Image loading failed'));
+                        img.src = e.target.result;
+                    };
+                    reader.onerror = () => reject(new Error('File reading failed'));
+                    reader.readAsDataURL(file);
+                });
+            },
+
+            createWatermarkedCanvas(img, watermarkText) {
+                const { maxDimension } = Config.imageProcessing;
+                let { width, height } = img;
+                if (width > height) {
+                    if (width > maxDimension) {
+                        height *= maxDimension / width;
+                        width = maxDimension;
+                    }
+                } else {
+                    if (height > maxDimension) {
+                        width *= maxDimension / height;
+                        height = maxDimension;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Watermark drawing logic
+                const fontSize = height * 0.04;
+                ctx.font = `bold ${fontSize}px Inter, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                const textMetrics = ctx.measureText(watermarkText);
+                const padding = fontSize * 0.5;
+                const rectWidth = textMetrics.width + padding * 2;
+                const rectHeight = fontSize + padding;
+                const rectX = (width - rectWidth) / 2;
+                const rectY = height - rectHeight - (height * 0.03);
+
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.beginPath();
+                ctx.roundRect(rectX, rectY, rectWidth, rectHeight, [rectHeight / 2]);
+                ctx.fill();
+
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillText(watermarkText, width / 2, rectY + rectHeight / 2);
+                
+                return canvas;
+            },
+            
+            blobToBase64(blob) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            }
+        };
+
+        /**
+         * @module APIService
+         * Handles external API calls.
+         */
+        const APIService = {
+            async getGeolocationData(lat, lon) {
+                try {
+                    const response = await fetch(`${Config.api.reverseGeocode}?latitude=${lat}&longitude=${lon}&localityLanguage=en`);
+                    if (!response.ok) throw new Error(`API call failed with status: ${response.status}`);
+                    
+                    const data = await response.json();
+                    const country = (data.countryName || 'Unknown').replace(' (the)', '');
+                    return { country, city: data.city || data.locality || 'Unknown' };
+                } catch (error) {
+                    console.error("Geolocation lookup failed:", error);
+                    return { country: 'Unknown', city: 'Unknown' };
+                }
+            }
+        };
+
+        /**
+         * @module App
+         * Main application controller. Initializes and orchestrates all modules.
+         */
+        const App = {
+            spotsData: new Map(),
+            
+            init() {
+                FirebaseService.init(this.onAuthStateChange.bind(this));
+                MapService.init(this.onMapClick.bind(this), this.onClusterClick.bind(this), this.showCurrentUserLocation.bind(this));
+                UIService.init(this.handleUpload.bind(this));
+                this.setupVoteDelegation();
+                this.setupPopupImageClickHandler();
+                this.setupPopupNoteClickHandler();
+            },
+
+            onAuthStateChange(userId) {
+                FirebaseService.listenForSpots(this.onSpotsUpdate.bind(this));
+            },
+
+            onSpotsUpdate(snapshot) {
+                const spots = [];
+                this.spotsData.clear();
+                snapshot.forEach(doc => {
+                    const spot = { id: doc.id, data: doc.data() };
+                    spots.push(spot);
+                    this.spotsData.set(spot.id, spot.data);
+                });
+                MapService.renderSpots(spots);
+            },
+
+            onMapClick(e) {
+                // A robust check to see if a popup is open.
+                // We check the map's popup pane for any child elements.
+                const popupPane = MapService.map.getPane('popupPane');
+                if (popupPane && popupPane.hasChildNodes()) {
+                    MapService.map.closePopup();
+                    return;
+                }
+                UIService.toggleUploadModal(true, e.latlng);
+            },
+
+            onMarkerClick(spotId, spotData) {
+                UIService.toggleImageViewer(true, spotId, spotData, this.onShowOnMap.bind(this));
+            },
+
+            onClusterClick(e) {
+                const markers = e.layer.getAllChildMarkers();
+                const spots = markers
+                    .map(marker => ({ id: marker.options.spotId, data: marker.options.spotData }))
+                    .filter(spot => spot.data);
+                
+                if (spots.length > 0) {
+                    UIService.toggleGallery(true, spots, this.onMarkerClick.bind(this));
+                }
+            },
+            
+            onShowOnMap(location) {
+                MapService.panTo(location);
+            },
+            
+            showCurrentUserLocation() {
+                if (!navigator.geolocation) {
+                    alert("Geolocation is not supported by your browser.");
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        MapService.panTo({ latitude: lat, longitude: lng }, 16);
+                        MapService.showUserLocationMarker({ latitude: lat, longitude: lng });
+                    },
+                    () => {
+                        alert("Unable to retrieve your location. Please ensure location services are enabled.");
+                    }
+                );
+            },
+
+            async handleUpload(e) {
+                e.preventDefault();
+                
+                try {
+                    const { uploaderName, description, photo, latitude, longitude } = UIService.getFormData();
+                    
+                    if (!description.trim()) {
+                        alert("Please add a description or note.");
+                        return;
+                    }
+
+                    UIService.setFormSubmitting(true, 'Processing...');
+                    localStorage.setItem('snapspot_uploader_name', uploaderName);
+
+                    let photoDataUrl = null;
+                    let spotType = 'note';
+
+                    if (photo && photo.size > 0) {
+                        spotType = 'image';
+                        console.log("Step 1a: Processing image...");
+                        const imageBlob = await ImageProcessor.process(photo, uploaderName);
+                        photoDataUrl = await ImageProcessor.blobToBase64(imageBlob);
+                        console.log("Step 2: Image processed and converted.");
+                    }
+                    
+                    console.log("Step 1b: Fetching location...");
+                    const locationData = await APIService.getGeolocationData(latitude, longitude);
+                    console.log("Step 3: Location data ready.");
+                    
+                    UIService.setFormSubmitting(true, 'Saving...');
+
+                    await FirebaseService.saveSpot({
+                        uploaderName,
+                        description,
+                        photoDataUrl,
+                        spotType,
+                        location: { latitude, longitude },
+                        country: locationData.country,
+                        city: locationData.city,
+                    });
+                    
+                    console.log("Step 4: Spot saved to Firestore! All done.");
+                    UIService.toggleUploadModal(false);
+
+                } catch (error) {
+                    console.error("Upload failed:", error);
+                    alert("Something went wrong while saving your spot. Please try again.");
+                } finally {
+                    UIService.setFormSubmitting(false, 'Upload Spot');
+                }
+            },
+            
+            setupPopupImageClickHandler() {
+                document.addEventListener('click', (e) => {
+                    const popupImage = e.target.closest('.popup-image');
+                    if (!popupImage) return;
+
+                    const spotId = popupImage.dataset.spotId;
+                    if (spotId && this.spotsData.has(spotId)) {
+                        const spotData = this.spotsData.get(spotId);
+                        MapService.map.closePopup();
+                        this.onMarkerClick(spotId, spotData);
+                    }
+                });
+            },
+            
+            setupPopupNoteClickHandler() {
+                document.addEventListener('click', (e) => {
+                    const popupNote = e.target.closest('.popup-note');
+                    if (!popupNote) return;
+
+                    const spotId = popupNote.dataset.spotId;
+                    if (spotId && this.spotsData.has(spotId)) {
+                        const spotData = this.spotsData.get(spotId);
+                        MapService.map.closePopup();
+                        this.onMarkerClick(spotId, spotData);
+                    }
+                });
+            },
+
+            setupVoteDelegation() {
+                document.addEventListener('click', async (e) => {
+                    const button = e.target.closest('.vote-btn');
+                    if (!button) return;
+                    if (!FirebaseService.userId) {
+                        alert("You need to be signed in to vote.");
+                        return;
+                    }
+
+                    const spotId = button.dataset.spotId;
+                    const newVote = button.dataset.vote;
+
+                    try {
+                        const spotDoc = await FirebaseService.getSpot(spotId);
+                        if(!spotDoc.exists()){ return; }
+                        
+                        const spotData = spotDoc.data();
+                        const voters = spotData.voters || {};
+                        const previousVote = voters[FirebaseService.userId];
+
+                        if (previousVote === newVote) {
+                            console.log("User clicked the same vote button again. No action taken.");
+                            return;
+                        }
+                        
+                        const thumbsUpBtn = document.querySelector(`#viewer-info button[data-spot-id="${spotId}"][data-vote="up"]`);
+                        const thumbsDownBtn = document.querySelector(`#viewer-info button[data-spot-id="${spotId}"][data-vote="down"]`);
+
+                        if (thumbsUpBtn && thumbsDownBtn) {
+                            let currentUpVotes = spotData.thumbsUp || 0;
+                            let currentDownVotes = spotData.thumbsDown || 0;
+
+                            if (previousVote) {
+                                if (newVote === 'up') {
+                                    currentUpVotes++;
+                                    currentDownVotes--;
+                                } else {
+                                    currentUpVotes--;
+                                    currentDownVotes++;
+                                }
+                            } else {
+                                if (newVote === 'up') currentUpVotes++;
+                                else currentDownVotes++;
+                            }
+                            thumbsUpBtn.textContent = `👍 ${currentUpVotes}`;
+                            thumbsDownBtn.textContent = `👎 ${currentDownVotes}`;
+                        }
+                        
+                        await FirebaseService.recordVote(spotId, newVote, previousVote);
+                        console.log(`Vote changed/recorded from ${previousVote} to ${newVote}`);
+
+                    } catch (error) {
+                        console.error("Error recording vote:", error);
+                    }
+                });
+            }
+        };
+
+        // --- Application Initialization ---
+        window.onload = () => {
+            App.init();
+        };
+
+    </script>
+</body>
+</html>
+
