@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SnapSpot - Share Your World</title>
+    <title>Pictxel - Share Your World</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -14,6 +14,9 @@
     <!-- Leaflet MarkerCluster CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+
+    <!-- Leaflet Control Geocoder CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
 
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -85,7 +88,7 @@
             object-fit: cover;
         }
         /* Glassmorphism for Leaflet Controls */
-        .leaflet-control-attribution, .leaflet-control-custom {
+        .leaflet-control-attribution, .leaflet-control-custom, .leaflet-control-geocoder {
             backdrop-filter: blur(8px);
             -webkit-backdrop-filter: blur(8px);
             background: rgba(255, 255, 255, 0.6) !important;
@@ -167,7 +170,7 @@
     <!-- Header / App Name -->
     <header class="absolute top-0 left-0 right-0 z-20 p-4 flex justify-center pointer-events-none">
         <div class="backdrop-blur-lg border border-white/40 rounded-full shadow-lg px-6 py-2 pointer-events-auto">
-            <h1 class="text-xl font-bold text-gray-800">SnapSpot</h1>
+            <h1 class="text-xl font-bold text-gray-800">Pictxel</h1>
         </div>
     </header>
 
@@ -263,6 +266,7 @@
     <!-- Firebase and Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
 
     <script type="module">
         // Firebase Imports
@@ -279,17 +283,17 @@
             firebase: typeof __firebase_config !== 'undefined' 
                 ? JSON.parse(__firebase_config) 
                 : {
-					
-					apiKey: "%VITE_FIREBASE_API_KEY%",
+                    // Note: These values are tied to the backend project and should not be changed
+                    // unless you are migrating to a new Firebase project.
+                    apiKey: "%VITE_FIREBASE_API_KEY%",
 					authDomain: "%VITE_FIREBASE_AUTH_DOMAIN%",
 					projectId: "%VITE_FIREBASE_PROJECT_ID%",
 					storageBucket: "%VITE_FIREBASE_STORAGE_BUCKET%",
 					messagingSenderId: "%VITE_FIREBASE_MESSAGING_SENDER_ID%",
 					appId: "%VITE_FIREBASE_APP_ID%",
 					measurementId: "%VITE_FIREBASE_MEASUREMENT_ID%"
-					
                 },
-            appId: typeof __app_id !== 'undefined' ? __app_id : 'snapspot-default',
+            appId: typeof __app_id !== 'undefined' ? __app_id : 'pictxel-default',
             initialAuthToken: typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null,
             map: {
                 initialCoords: [14.5995, 120.9842], // Manila
@@ -474,6 +478,20 @@
                     }
                 });
                 this.map.addControl(new LocationControl());
+
+                // Add Geocoder search control
+                L.Control.geocoder({
+                    defaultMarkGeocode: false
+                }).on('markgeocode', function(e) {
+                    var bbox = e.geocode.bbox;
+                    var poly = L.polygon([
+                        bbox.getSouthEast(),
+                        bbox.getNorthEast(),
+                        bbox.getNorthWest(),
+                        bbox.getSouthWest()
+                    ]);
+                    MapService.map.fitBounds(poly.getBounds());
+                }).addTo(this.map);
             },
 
             renderSpots(spots) {
@@ -640,7 +658,7 @@
                 if (show && latlng) {
                     this.latInput.value = latlng.lat;
                     this.lonInput.value = latlng.lng;
-                    const savedName = localStorage.getItem('snapspot_uploader_name');
+                    const savedName = localStorage.getItem('pictxel_uploader_name');
                     if (savedName) this.uploadForm.uploaderName.value = savedName;
                     this.uploadModal.classList.remove('modal-hidden');
                     this.uploadModal.classList.add('modal-visible');
@@ -939,7 +957,7 @@
                     }
 
                     UIService.setFormSubmitting(true, 'Processing...');
-                    localStorage.setItem('snapspot_uploader_name', uploaderName);
+                    localStorage.setItem('pictxel_uploader_name', uploaderName);
 
                     let photoDataUrl = null;
                     let spotType = 'note';
@@ -1073,5 +1091,4 @@
     </script>
 </body>
 </html>
-
 
