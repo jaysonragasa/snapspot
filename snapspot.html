@@ -158,6 +158,29 @@
         .gallery-note-item {
             aspect-ratio: 1 / 1;
         }
+
+        /* --- Bottom Sheet Styles --- */
+        #bottom-sheet {
+            transition: transform 0.3s ease-out;
+            transform: translateY(100%);
+        }
+        #bottom-sheet.visible {
+            transform: translateY(0);
+        }
+        #bottom-sheet-content {
+            position: relative; /* Needed for virtual scrolling */
+        }
+        /* Custom scrollbar for horizontal scroll */
+        #bottom-sheet-content::-webkit-scrollbar {
+            height: 6px;
+        }
+        #bottom-sheet-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #bottom-sheet-content::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 overflow-hidden">
@@ -184,6 +207,15 @@
             </div>
         </div>
     </header>
+
+    <!-- Bottom Sheet -->
+    <div id="bottom-sheet" class="fixed bottom-0 left-0 right-0 z-20 p-4 pointer-events-none">
+        <div class="w-full bg-white/50 backdrop-blur-lg border border-white/40 rounded-xl shadow-2xl p-3 pointer-events-auto">
+            <div id="bottom-sheet-content" class="flex gap-3 overflow-x-auto pb-2">
+                <!-- Virtual scrolling content will be managed by JS -->
+            </div>
+        </div>
+    </div>
 
     <!-- Upload Modal -->
     <div id="upload-modal" class="modal-transition modal-hidden fixed inset-0 bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-30 p-4">
@@ -458,7 +490,7 @@
             markers: null,
             userLocationMarker: null,
 
-            init(onMapClick, onClusterClick) {
+            init(onMapClick, onClusterClick, onMapMove) {
                 this.map = L.map('map', { zoomControl: false }).setView(Config.map.initialCoords, Config.map.initialZoom);
                 L.control.zoom({ position: 'topleft' }).addTo(this.map);
                 
@@ -474,6 +506,7 @@
                 this.map.addLayer(this.markers);
 
                 this.map.on('click', onMapClick);
+                this.map.on('moveend', onMapMove);
                 this.markers.on('clusterclick', onClusterClick);
             },
 
@@ -580,6 +613,8 @@
             galleryModal: null, closeGalleryBtn: null, galleryGrid: null,
             photoInput: null, filePreview: null,
             searchResultsContainer: null,
+            bottomSheet: null, 
+            bottomSheetContent: null,
             
             init(onFormSubmit) {
                 // Upload Modal
@@ -606,6 +641,10 @@
                 
                 // Search
                 this.searchResultsContainer = document.getElementById('search-results');
+                
+                // Bottom Sheet
+                this.bottomSheet = document.getElementById('bottom-sheet');
+                this.bottomSheetContent = document.getElementById('bottom-sheet-content');
 
                 // Populate Icon Containers
                 document.getElementById('camera-icon-container').innerHTML = Config.icons.uploadCamera;
@@ -774,6 +813,42 @@
             hideSearchResults() {
                 this.searchResultsContainer.innerHTML = '';
                 this.searchResultsContainer.classList.add('hidden');
+            },
+
+            updateBottomSheet(spots, onSpotClick) {
+                if (!this.bottomSheet || !this.bottomSheetContent) return;
+
+                this.bottomSheetContent.innerHTML = ''; // Clear previous items
+
+                if (spots.length === 0) {
+                    this.bottomSheet.classList.remove('visible');
+                    return;
+                }
+
+                this.bottomSheet.classList.add('visible');
+
+                spots.forEach(spot => {
+                    let sheetItem;
+                    if (spot.data.spotType === 'note') {
+                        sheetItem = document.createElement('div');
+                        const bgColor = Utils.getRandomHexColor();
+                        const textColor = Utils.getContrastColor(bgColor);
+                        
+                        sheetItem.className = 'flex-shrink-0 w-24 h-24 rounded-lg cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center p-2 text-center text-xs';
+                        sheetItem.style.backgroundColor = bgColor;
+                        sheetItem.style.color = textColor;
+                        sheetItem.textContent = Utils.truncateText(spot.data.description, 40);
+                    } else {
+                        sheetItem = document.createElement('img');
+                        sheetItem.src = spot.data.photoDataUrl;
+                        sheetItem.className = 'flex-shrink-0 w-24 h-24 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity';
+                    }
+                    
+                    sheetItem.addEventListener('click', () => {
+                        onSpotClick(spot.id, spot.data);
+                    });
+                    this.bottomSheetContent.appendChild(sheetItem);
+                });
             }
         };
 
@@ -886,7 +961,7 @@
             
             init() {
                 FirebaseService.init(this.onAuthStateChange.bind(this));
-                MapService.init(this.onMapClick.bind(this), this.onClusterClick.bind(this));
+                MapService.init(this.onMapClick.bind(this), this.onClusterClick.bind(this), this.updateBottomSheet.bind(this));
                 UIService.init(this.handleUpload.bind(this));
                 this.setupHeaderControls();
                 this.setupVoteDelegation();
@@ -907,6 +982,7 @@
                     this.spotsData.set(spot.id, spot.data);
                 });
                 MapService.renderSpots(spots);
+                this.updateBottomSheet(); // Update sheet on initial load and when new spots are added
             },
 
             onMapClick(e) {
@@ -1041,6 +1117,7 @@
                 url.searchParams.append('q', query);
                 url.searchParams.append('format', 'json');
                 url.searchParams.append('limit', 10);
+                url.searchParams.append('polygon_geojson', 1);
 
                 try {
                     const response = await fetch(url);
@@ -1073,6 +1150,21 @@
                 MapService.map.fitBounds(poly.getBounds());
                 UIService.hideSearchResults();
                 document.getElementById('location-search-input').value = ''; // Clear input
+            },
+
+            updateBottomSheet() {
+                const bounds = MapService.map.getBounds();
+                const visibleSpots = [];
+                // We need to iterate through the actual marker layers, not the cluster group
+                MapService.markers.eachLayer(layer => {
+                    // Check if it's a marker and within the bounds
+                    if (layer instanceof L.Marker && bounds.contains(layer.getLatLng())) {
+                         if(layer.options.spotData) {
+                             visibleSpots.push({id: layer.options.spotId, data: layer.options.spotData});
+                         }
+                    }
+                });
+                UIService.updateBottomSheet(visibleSpots, this.onMarkerClick.bind(this));
             },
 
             setupPopupImageClickHandler() {
@@ -1169,6 +1261,4 @@
     </script>
 </body>
 </html>
-
-
 
