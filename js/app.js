@@ -11,7 +11,7 @@ const Config = {
             messagingSenderId: "369585987459",
             appId: "1:369585987459:web:a09abfb7bea875c5e4a0b6",
         },
-    appId: typeof __app_id !== 'undefined' ? __app_id : 'pictxel-default',
+    appId: typeof __app_id !== 'undefined' ? __app_id : 'snapshot-default',
     initialAuthToken: typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null,
     map: {
         initialCoords: [14.5995, 120.9842],
