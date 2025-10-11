@@ -357,3 +357,5 @@ MigrationBackup/
 
 # custom folders
 Tests/
+/.vs/snapspot/CopilotIndices/17.14.1231.31060/CodeChunks.db
+/.vs/slnx.sqlite
