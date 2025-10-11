@@ -20,7 +20,7 @@ const Config = {
         tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         useImageAsMarker: true,
-        maxClusterRadius: 80,
+        maxClusterRadius: 20,
         viewportBuffer: 1000
     },
     api: {
@@ -338,6 +338,7 @@ const UIService = {
             this.lonInput.value = latlng.lng;
             const savedName = localStorage.getItem('pictxel_uploader_name');
             if (savedName) this.uploadForm.uploaderName.value = savedName;
+            document.getElementById('spotDate').value = new Date().toISOString().split('T')[0];
             this.uploadModal.classList.remove('modal-hidden');
             this.uploadModal.classList.add('modal-visible');
         } else {
@@ -446,6 +447,7 @@ const UIService = {
             photo: formData.get('photo'),
             latitude: parseFloat(formData.get('latitude')),
             longitude: parseFloat(formData.get('longitude')),
+            spotDate: formData.get('spotDate'),
         };
     },
 
@@ -726,7 +728,7 @@ const App = {
         }
         
         try {
-            const { uploaderName, description, photo, latitude, longitude } = UIService.getFormData();
+            const { uploaderName, description, photo, latitude, longitude, spotDate } = UIService.getFormData();
             
             if (!description.trim()) {
                 alert("Please add a description or note.");
@@ -761,6 +763,7 @@ const App = {
                 location: { latitude, longitude },
                 country: locationData.country,
                 city: locationData.city,
+                spotDate,
             });
             
             console.log("Step 4: Spot saved to Firestore! All done.");
