@@ -301,6 +301,10 @@ const UIService = {
         document.getElementById('header-location-icon-container').innerHTML = Config.icons.location;
 
         this.closeModalButton.addEventListener('click', () => this.toggleUploadModal(false));
+        this.closeModalButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.toggleUploadModal(false);
+        });
         this.uploadModal.addEventListener('click', (e) => {
             if (e.target === this.uploadModal) this.toggleUploadModal(false);
         });
