@@ -181,6 +181,19 @@
             background: rgba(0, 0, 0, 0.2);
             border-radius: 3px;
         }
+        /* --- Notification Bar Styles --- */
+        #notification-bar {
+            top: 4.5rem; /* Position below the header */
+            transform: scale(0.9) translateY(-150%);
+            opacity: 0;
+            transition: transform 0.4s ease, opacity 0.4s ease;
+            pointer-events: none;
+        }
+        #notification-bar.visible {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
     </style>
 </head>
 <body class="bg-gray-100 overflow-hidden">
@@ -207,6 +220,16 @@
             </div>
         </div>
     </header>
+
+     <!-- Notification Bar -->
+    <div id="notification-bar" class="fixed left-0 right-0 z-50 flex justify-center">
+        <div class="backdrop-blur-lg bg-white/50 border border-white/40 rounded-full shadow-lg px-4 pl-6 py-2 flex items-center gap-4">
+            <p id="notification-message" class="text-gray-800 text-center text-sm"></p>
+            <button id="close-notification-btn" class="text-gray-500 hover:text-gray-800">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
+    </div>
 
     <!-- Bottom Sheet -->
     <div id="bottom-sheet" class="fixed bottom-0 left-0 right-0 z-20 p-4 pointer-events-none">
@@ -282,20 +305,20 @@
     
     <!-- Full-Screen Image Viewer Modal -->
     <div id="image-viewer" class="modal-transition modal-hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-40 p-4">
-        <div class="relative w-full h-full flex flex-col items-center justify-center">
-             <button id="close-viewer-btn" class="absolute top-4 right-4 text-white/80 hover:text-white z-50">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <div class="relative w-full h-full flex flex-col items-center justify-center pointer-events-none">
+             <button id="close-viewer-btn" class="absolute top-4 right-4 text-white/80 hover:text-white z-50 pointer-events-auto">
+                <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
             </button>
-            <img id="viewer-img" src="" class="max-h-[70%] max-w-[90vw] object-contain rounded-lg shadow-2xl">
-            <div id="viewer-info" class="w-full max-w-3xl text-white text-center mt-4 p-4 bg-black/40 backdrop-blur-md rounded-lg"></div>
+            <img id="viewer-img" src="" class="max-h-[70%] max-w-[90vw] object-contain rounded-lg shadow-2xl pointer-events-auto">
+            <div id="viewer-info" class="w-full max-w-3xl text-white text-center mt-4 p-4 bg-black/40 backdrop-blur-md rounded-lg pointer-events-auto"></div>
         </div>
     </div>
 
     <!-- Gallery Modal -->
     <div id="gallery-modal" class="modal-transition modal-hidden fixed inset-0 bg-black/90 backdrop-blur-sm z-40 p-4 overflow-y-auto">
-        <div class="relative w-full max-w-6xl mx-auto">
+        <div class="relative w-full max-w-6xl mx-auto pb-24">
             <button id="close-gallery-btn" class="fixed top-4 right-4 text-white/80 hover:text-white z-50">
                  <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -615,6 +638,7 @@
             searchResultsContainer: null,
             bottomSheet: null, 
             bottomSheetContent: null,
+            notificationBar: null, notificationMessage: null, closeNotificationBtn: null,
             
             init(onFormSubmit) {
                 // Upload Modal
@@ -646,6 +670,11 @@
                 this.bottomSheet = document.getElementById('bottom-sheet');
                 this.bottomSheetContent = document.getElementById('bottom-sheet-content');
 
+                // Notification Bar
+                this.notificationBar = document.getElementById('notification-bar');
+                this.notificationMessage = document.getElementById('notification-message');
+                this.closeNotificationBtn = document.getElementById('close-notification-btn');
+
                 // Populate Icon Containers
                 document.getElementById('camera-icon-container').innerHTML = Config.icons.uploadCamera;
                 document.getElementById('photo-icon-container').innerHTML = Config.icons.uploadPhoto;
@@ -660,6 +689,9 @@
                 this.uploadForm.addEventListener('submit', onFormSubmit);
 
                 this.closeViewerBtn.addEventListener('click', () => this.toggleImageViewer(false));
+                this.imageViewer.addEventListener('click', (e) => {
+                    if (e.target === this.imageViewer) this.toggleImageViewer(false);
+                });
                 this.closeGalleryBtn.addEventListener('click', () => this.toggleGallery(false));
                 
                 cameraBtn.addEventListener('click', () => {
@@ -741,7 +773,7 @@
             },
 
             toggleGallery(show, spots = [], onSpotClick) {
-                 if (show && spots.length > 0) {
+                 if (show) {
                     this.galleryGrid.innerHTML = ''; // Clear previous items
                     spots.forEach(spot => {
                         let galleryItem;
@@ -816,18 +848,21 @@
             },
 
             updateBottomSheet(spots, onSpotClick) {
+                // This is a placeholder for the future virtual scroller
+                const limitedSpots = spots.slice(0, 50); // Hard limit for now
+
                 if (!this.bottomSheet || !this.bottomSheetContent) return;
 
-                this.bottomSheetContent.innerHTML = ''; // Clear previous items
+                this.bottomSheetContent.innerHTML = ''; 
 
-                if (spots.length === 0) {
+                if (limitedSpots.length === 0) {
                     this.bottomSheet.classList.remove('visible');
                     return;
                 }
 
                 this.bottomSheet.classList.add('visible');
 
-                spots.forEach(spot => {
+                limitedSpots.forEach(spot => {
                     let sheetItem;
                     if (spot.data.spotType === 'note') {
                         sheetItem = document.createElement('div');
@@ -849,6 +884,15 @@
                     });
                     this.bottomSheetContent.appendChild(sheetItem);
                 });
+            },
+
+            toggleNotification(show, message) {
+                if(show) {
+                    this.notificationMessage.textContent = message;
+                    this.notificationBar.classList.add('visible');
+                } else {
+                    this.notificationBar.classList.remove('visible');
+                }
             }
         };
 
@@ -958,6 +1002,7 @@
          */
         const App = {
             spotsData: new Map(),
+            notificationTimeout: null,
             
             init() {
                 FirebaseService.init(this.onAuthStateChange.bind(this));
@@ -967,6 +1012,8 @@
                 this.setupVoteDelegation();
                 this.setupPopupImageClickHandler();
                 this.setupPopupNoteClickHandler();
+                UIService.closeNotificationBtn.addEventListener('click', () => this.hideNotification());
+                this.showCurrentUserLocation();
             },
 
             onAuthStateChange(userId) {
@@ -1017,9 +1064,11 @@
             
             showCurrentUserLocation() {
                 if (!navigator.geolocation) {
-                    alert("Geolocation is not supported by your browser.");
+                    this.showNotification("Geolocation is not supported by your browser.", null);
                     return;
                 }
+
+                this.showNotification("Zooming to your current location");
 
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
@@ -1029,7 +1078,7 @@
                         MapService.showUserLocationMarker({ latitude: lat, longitude: lng });
                     },
                     () => {
-                        alert("Unable to retrieve your location. Please ensure location services are enabled.");
+                        this.showNotification("Unable to retrieve your location.", null);
                     }
                 );
             },
@@ -1077,6 +1126,7 @@
                     
                     console.log("Step 4: Spot saved to Firestore! All done.");
                     UIService.toggleUploadModal(false);
+                    this.showNotification("Your spot has been saved successfully!");
 
                 } catch (error) {
                     console.error("Upload failed:", error);
@@ -1165,6 +1215,26 @@
                     }
                 });
                 UIService.updateBottomSheet(visibleSpots, this.onMarkerClick.bind(this));
+            },
+            
+            showNotification(message, duration = 5000) {
+                if (this.notificationTimeout) {
+                    clearTimeout(this.notificationTimeout);
+                }
+                UIService.toggleNotification(true, message);
+                if (duration) {
+                    this.notificationTimeout = setTimeout(() => {
+                        this.hideNotification();
+                    }, duration);
+                }
+            },
+
+            hideNotification() {
+                if (this.notificationTimeout) {
+                    clearTimeout(this.notificationTimeout);
+                    this.notificationTimeout = null;
+                }
+                UIService.toggleNotification(false);
             },
 
             setupPopupImageClickHandler() {
