@@ -4,7 +4,7 @@ const path = require('path');
 console.log('Starting build process...');
 
 // Path to the source and destination files
-const sourcePath = path.join(__dirname, 'index-clean.html');
+const sourcePath = path.join(__dirname, 'snapspot.html');
 const destDir = path.join(__dirname, 'public');
 const destPath = path.join(destDir, 'index.html');
 const cssSourcePath = path.join(__dirname, 'css', 'styles.css');
