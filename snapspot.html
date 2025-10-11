@@ -70,18 +70,18 @@
         .image-marker-icon {
             width: 55px;
             height: 55px;
-            border-radius: 6px; /* Rounded square */
-            border: 2px solid white;
+            border-radius: 9999px; /* Circular */
+            border: 5px solid white;
             background-color: #eee; /* Fallback color */
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            box-shadow: 6px 6px 15px 0px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
             display: flex;
             align-items: center;
             justify-content: center;
             overflow: hidden;
         }
         .image-marker-icon img {
-            width: 50px;
-            height: 50px;
+            width: 100% !important;
+            height: 100%;
             object-fit: cover;
         }
         /* Glassmorphism for Leaflet Controls */
@@ -193,6 +193,17 @@
             transform: scale(1) translateY(0);
             opacity: 1;
             pointer-events: auto;
+        }
+        /* --- Reaction Button Styles --- */
+        .reaction-btn {
+            transition: transform 0.2s ease;
+        }
+        .reaction-btn:hover {
+            transform: scale(1.2);
+        }
+        .reaction-btn.selected {
+            background-color: rgba(0, 123, 255, 0.2);
+            border-radius: 9999px;
         }
     </style>
 </head>
@@ -337,7 +348,7 @@
         // Firebase Imports
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, serverTimestamp, increment, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, serverTimestamp, increment, getDoc, deleteField } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         /**
          * @module Config
@@ -461,8 +472,7 @@
                     ...spotData,
                     authorId: this.userId,
                     createdAt: serverTimestamp(),
-                    thumbsUp: 0,
-                    thumbsDown: 0,
+                    reactions: { thumbsUp: 0, thumbsDown: 0, heart: 0, heartEyes: 0, laugh: 0, shocked: 0, sad: 0, angry: 0, evil: 0 },
                     voters: {}
                 });
             },
@@ -472,33 +482,27 @@
                  return getDoc(spotRef);
             },
 
-            async recordVote(spotId, newVote, previousVote) {
+            async updateReaction(spotId, newReaction, previousReaction) {
                  if (!this.userId) throw new Error("User not authenticated for voting.");
                  const spotRef = doc(this.db, 'artifacts', Config.appId, 'public', 'data', 'spots', spotId);
                  const updatePayload = {};
                  
-                 updatePayload[`voters.${this.userId}`] = newVote;
-
-                 // If changing a vote
-                 if (previousVote && previousVote !== newVote) {
-                     if (newVote === 'up') {
-                         updatePayload.thumbsUp = increment(1);
-                         updatePayload.thumbsDown = increment(-1);
-                     } else { // newVote is 'down'
-                         updatePayload.thumbsUp = increment(-1);
-                         updatePayload.thumbsDown = increment(1);
-                     }
+                 // User is un-reacting
+                 if (newReaction === previousReaction) {
+                     updatePayload[`reactions.${newReaction}`] = increment(-1);
+                     updatePayload[`voters.${this.userId}`] = deleteField();
                  } 
-                 // If casting a brand new vote
-                 else if (!previousVote) {
-                     if (newVote === 'up') {
-                         updatePayload.thumbsUp = increment(1);
-                     } else { // newVote is 'down'
-                         updatePayload.thumbsDown = increment(1);
-                     }
+                 // User is changing their reaction
+                 else if (previousReaction) {
+                     updatePayload[`reactions.${previousReaction}`] = increment(-1);
+                     updatePayload[`reactions.${newReaction}`] = increment(1);
+                     updatePayload[`voters.${this.userId}`] = newReaction;
                  }
-                 // If previousVote === newVote, we don't need to change counts,
-                 // but we still update the voter record (though the App logic prevents this call).
+                 // User is casting a new reaction
+                 else {
+                     updatePayload[`reactions.${newReaction}`] = increment(1);
+                     updatePayload[`voters.${this.userId}`] = newReaction;
+                 }
                  
                  return updateDoc(spotRef, updatePayload);
             }
@@ -741,11 +745,11 @@
                         <h3 class="font-bold text-lg">${spot.uploaderName}</h3>
                         <p class="text-gray-300 text-sm mt-1">${spot.description || ''}</p>
                         ${locationHtml}
-                        <div class="mt-3 flex items-center justify-center text-lg space-x-6">
-                            <button data-spot-id="${spotId}" data-vote="up" class="vote-btn hover:text-green-400 transition-transform transform hover:scale-110">👍 ${spot.thumbsUp}</button>
-                            <button data-spot-id="${spotId}" data-vote="down" class="vote-btn hover:text-red-400 transition-transform transform hover:scale-110">👎 ${spot.thumbsDown}</button>
-                            <button id="${showOnMapBtnId}" class="text-blue-400 hover:text-blue-300 text-sm">Show on Map</button>
-                        </div>`;
+                        <div id="reaction-bar" class="mt-3 flex items-center justify-center text-lg space-x-2">
+                           ${this.generateReactionsHtml(spotId, spot)}
+                        </div>
+                        <button id="${showOnMapBtnId}" class="text-blue-400 hover:text-blue-300 text-sm mt-3">Show on Map</button>
+                        `;
                     
                     if (spot.spotType === 'note') {
                         this.viewerImg.style.display = 'none';
@@ -770,6 +774,20 @@
                     this.viewerImg.src = "";
                     this.viewerInfo.innerHTML = "";
                 }
+            },
+
+            generateReactionsHtml(spotId, spot) {
+                const currentUserVote = spot.voters ? spot.voters[FirebaseService.userId] : null;
+                return Object.entries(App.REACTIONS).map(([key, emoji]) => {
+                    const count = (spot.reactions && spot.reactions[key]) || 0;
+                    const selectedClass = currentUserVote === key ? 'selected' : '';
+                    return `
+                        <button data-spot-id="${spotId}" data-reaction="${key}" class="reaction-btn ${selectedClass}">
+                            <span class="text-xl">${emoji}</span>
+                            <span class="text-xs">${count}</span>
+                        </button>
+                    `;
+                }).join('');
             },
 
             toggleGallery(show, spots = [], onSpotClick) {
@@ -1003,13 +1021,24 @@
         const App = {
             spotsData: new Map(),
             notificationTimeout: null,
+            REACTIONS: {
+                thumbsUp: '👍',
+                thumbsDown: '👎',
+                heart: '❤️',
+                heartEyes: '😍',
+                laugh: '😂',
+                shocked: '😮',
+                sad: '😢',
+                angry: '😠',
+                evil: '😈'
+            },
             
             init() {
                 FirebaseService.init(this.onAuthStateChange.bind(this));
                 MapService.init(this.onMapClick.bind(this), this.onClusterClick.bind(this), this.updateBottomSheet.bind(this));
                 UIService.init(this.handleUpload.bind(this));
                 this.setupHeaderControls();
-                this.setupVoteDelegation();
+                this.setupReactionHandler();
                 this.setupPopupImageClickHandler();
                 this.setupPopupNoteClickHandler();
                 UIService.closeNotificationBtn.addEventListener('click', () => this.hideNotification());
@@ -1265,59 +1294,63 @@
                 });
             },
 
-            setupVoteDelegation() {
+            setupReactionHandler() {
                 document.addEventListener('click', async (e) => {
-                    const button = e.target.closest('.vote-btn');
+                    const button = e.target.closest('.reaction-btn');
                     if (!button) return;
                     if (!FirebaseService.userId) {
-                        alert("You need to be signed in to vote.");
+                        alert("You need to be signed in to react.");
                         return;
                     }
 
                     const spotId = button.dataset.spotId;
-                    const newVote = button.dataset.vote;
+                    const newReaction = button.dataset.reaction;
 
                     try {
                         const spotDoc = await FirebaseService.getSpot(spotId);
-                        if(!spotDoc.exists()){ return; }
+                        if (!spotDoc.exists()) { return; }
                         
                         const spotData = spotDoc.data();
                         const voters = spotData.voters || {};
-                        const previousVote = voters[FirebaseService.userId];
-
-                        if (previousVote === newVote) {
-                            console.log("User clicked the same vote button again. No action taken.");
-                            return;
-                        }
+                        const previousReaction = voters[FirebaseService.userId];
                         
-                        const thumbsUpBtn = document.querySelector(`#viewer-info button[data-spot-id="${spotId}"][data-vote="up"]`);
-                        const thumbsDownBtn = document.querySelector(`#viewer-info button[data-spot-id="${spotId}"][data-vote="down"]`);
+                        // --- Optimistic UI Update ---
+                        const reactionContainer = button.parentElement;
+                        const oldBtn = previousReaction ? reactionContainer.querySelector(`[data-reaction="${previousReaction}"]`) : null;
+                        const newBtn = button;
 
-                        if (thumbsUpBtn && thumbsDownBtn) {
-                            let currentUpVotes = spotData.thumbsUp || 0;
-                            let currentDownVotes = spotData.thumbsDown || 0;
-
-                            if (previousVote) {
-                                if (newVote === 'up') {
-                                    currentUpVotes++;
-                                    currentDownVotes--;
-                                } else {
-                                    currentUpVotes--;
-                                    currentDownVotes++;
-                                }
-                            } else {
-                                if (newVote === 'up') currentUpVotes++;
-                                else currentDownVotes++;
+                        // Un-reacting
+                        if (newReaction === previousReaction) {
+                            newBtn.classList.remove('selected');
+                            const countSpan = newBtn.querySelector('span:last-child');
+                            countSpan.textContent = parseInt(countSpan.textContent) - 1;
+                        } 
+                        // Changing reaction
+                        else if (previousReaction) {
+                            if (oldBtn) {
+                                oldBtn.classList.remove('selected');
+                                let countSpan = oldBtn.querySelector('span:last-child');
+                                countSpan.textContent = parseInt(countSpan.textContent) - 1;
                             }
-                            thumbsUpBtn.textContent = `👍 ${currentUpVotes}`;
-                            thumbsDownBtn.textContent = `👎 ${currentDownVotes}`;
+
+                            newBtn.classList.add('selected');
+                            let countSpan = newBtn.querySelector('span:last-child');
+                            countSpan.textContent = parseInt(countSpan.textContent) + 1;
+                        }
+                        // New reaction
+                        else {
+                             newBtn.classList.add('selected');
+                             const countSpan = newBtn.querySelector('span:last-child');
+                             countSpan.textContent = parseInt(countSpan.textContent) + 1;
                         }
                         
-                        await FirebaseService.recordVote(spotId, newVote, previousVote);
-                        console.log(`Vote changed/recorded from ${previousVote} to ${newVote}`);
+                        // --- Update Database ---
+                        await FirebaseService.updateReaction(spotId, newReaction, previousReaction);
+                        console.log(`Reaction updated from ${previousReaction} to ${newReaction === previousReaction ? null : newReaction}`);
 
                     } catch (error) {
-                        console.error("Error recording vote:", error);
+                        console.error("Error updating reaction:", error);
+                        // Optional: Revert UI changes on failure
                     }
                 });
             }
@@ -1331,5 +1364,4 @@
     </script>
 </body>
 </html>
-
 
