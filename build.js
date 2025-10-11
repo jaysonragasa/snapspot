@@ -4,14 +4,26 @@ const path = require('path');
 console.log('Starting build process...');
 
 // Path to the source and destination files
-const sourcePath = path.join(__dirname, 'snapspot.html');
+const sourcePath = path.join(__dirname, 'index-clean.html');
 const destDir = path.join(__dirname, 'public');
 const destPath = path.join(destDir, 'index.html');
+const cssSourcePath = path.join(__dirname, 'css', 'styles.css');
+const jsSourcePath = path.join(__dirname, 'js', 'app.js');
+const cssDestPath = path.join(destDir, 'css', 'styles.css');
+const jsDestPath = path.join(destDir, 'js', 'app.js');
 
-// Create the destination directory if it doesn't exist
+// Create the destination directories if they don't exist
 if (!fs.existsSync(destDir)) {
     fs.mkdirSync(destDir);
     console.log('Created public directory.');
+}
+if (!fs.existsSync(path.join(destDir, 'css'))) {
+    fs.mkdirSync(path.join(destDir, 'css'));
+    console.log('Created public/css directory.');
+}
+if (!fs.existsSync(path.join(destDir, 'js'))) {
+    fs.mkdirSync(path.join(destDir, 'js'));
+    console.log('Created public/js directory.');
 }
 
 // Read the original HTML file
@@ -42,6 +54,17 @@ try {
 } catch (error) {
     console.error('Error writing final HTML file:', error);
     process.exit(1); // Exit with an error code
+}
+
+// Copy CSS and JS files
+try {
+    fs.copyFileSync(cssSourcePath, cssDestPath);
+    console.log('Successfully copied CSS file.');
+    fs.copyFileSync(jsSourcePath, jsDestPath);
+    console.log('Successfully copied JS file.');
+} catch (error) {
+    console.error('Error copying CSS/JS files:', error);
+    process.exit(1);
 }
 
 console.log('Build process completed successfully!');
