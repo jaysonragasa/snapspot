@@ -175,6 +175,10 @@ const MapService = {
 
                 if (spot.data.spotType === 'note') {
                     iconHtml = `<div class="custom-marker note-marker-icon">${Config.icons.noteMarker}</div>`;
+                } else if (spot.data.spotType === 'youtube' && spot.data.photoDataUrl) {
+                    iconHtml = `<div class="image-marker-icon youtube-marker"><img src="${spot.data.photoDataUrl}" alt="YouTube thumbnail"><div class="youtube-play-icon">▶</div></div>`;
+                    iconSize = [55, 55];
+                    iconAnchor = [27, 27];
                 } else if (Config.map.useImageAsMarker && spot.data.photoDataUrl) {
                     iconHtml = `<div class="image-marker-icon"><img src="${spot.data.photoDataUrl}" alt="Spot thumbnail"></div>`;
                     iconSize = [55, 55];
@@ -204,6 +208,20 @@ const MapService = {
                             <p class="text-gray-600">${Utils.truncateText(spot.data.description, 100)}</p>
                             <p class="text-xs text-blue-500 mt-1">Click to view full note</p>
                         </div>`;
+                } else if (spot.data.spotType === 'youtube') {
+                    popupContent = `
+                        <div class="text-center">
+                            <div class="relative cursor-pointer popup-youtube w-full" data-spot-id="${spot.id}" style="max-width: 200px; height: 150px; margin: 0 auto;">
+                                <img src="${spot.data.photoDataUrl}" alt="YouTube video" class="w-full h-full rounded-md object-cover">
+                                <div class="absolute inset-0 flex items-center justify-center rounded-md">
+                                    <div class="bg-red-600 text-white rounded-full w-12 h-12 flex items-center justify-center text-xl shadow-lg">▶</div>
+                                </div>
+                                <a href="https://www.youtube.com/watch?v=${spot.data.youtubeVideoId}" target="_blank" class="absolute top-2 right-2 bg-black/50 text-white p-1 rounded hover:bg-black/70" onclick="event.stopPropagation()">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                                </a>
+                            </div>
+                            <p class="mt-2 text-sm text-gray-700">${Utils.truncateText(spot.data.description, 50) || 'Click to watch video.'}</p>
+                        </div>`;
                 } else {
                     popupContent = `
                         <div class="text-center">
@@ -216,7 +234,7 @@ const MapService = {
 
                 marker.on('popupopen', (e) => {
                     const popup = e.popup;
-                    const img = popup.getElement().querySelector('.popup-image');
+                    const img = popup.getElement().querySelector('.popup-image, .popup-youtube img');
                     if (img && !img.complete) {
                         img.onload = () => {
                             popup.update();
@@ -372,6 +390,16 @@ const UIService = {
             
             if (spot.spotType === 'note') {
                 this.viewerImg.style.display = 'none';
+            } else if (spot.spotType === 'youtube') {
+                this.viewerImg.style.display = 'none';
+                const youtubePlayer = document.createElement('iframe');
+                youtubePlayer.src = `https://www.youtube.com/embed/${spot.youtubeVideoId}?autoplay=1`;
+                youtubePlayer.className = 'max-h-[70%] max-w-[90vw] rounded-lg shadow-2xl pointer-events-auto';
+                youtubePlayer.style.width = '800px';
+                youtubePlayer.style.height = '450px';
+                youtubePlayer.allow = 'autoplay; encrypted-media';
+                youtubePlayer.allowFullscreen = true;
+                this.viewerImg.parentNode.insertBefore(youtubePlayer, this.viewerImg);
             } else {
                 this.viewerImg.style.display = 'block';
                 this.viewerImg.src = spot.photoDataUrl;
@@ -391,6 +419,9 @@ const UIService = {
             this.imageViewer.classList.remove('modal-visible');
             this.viewerImg.src = "";
             this.viewerInfo.innerHTML = "";
+            // Remove any YouTube iframe to stop audio
+            const iframe = this.viewerImg.parentNode.querySelector('iframe');
+            if (iframe) iframe.remove();
         }
     },
 
@@ -654,6 +685,7 @@ const App = {
         this.setupReactionHandler();
         this.setupPopupImageClickHandler();
         this.setupPopupNoteClickHandler();
+        this.setupPopupYouTubeClickHandler();
         UIService.closeNotificationBtn.addEventListener('click', () => this.hideNotification());
         this.showCurrentUserLocation();
     },
@@ -744,8 +776,16 @@ const App = {
 
             let photoDataUrl = null;
             let spotType = 'note';
+            let youtubeVideoId = null;
 
-            if (photo && photo.size > 0) {
+            // Check for YouTube URL in description
+            const youtubeMatch = description.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+            if (youtubeMatch) {
+                youtubeVideoId = youtubeMatch[1];
+                photoDataUrl = `https://img.youtube.com/vi/${youtubeVideoId}/maxresdefault.jpg`;
+                spotType = 'youtube';
+                console.log("Step 1a: YouTube video detected.");
+            } else if (photo && photo.size > 0) {
                 spotType = 'image';
                 console.log("Step 1a: Processing image...");
                 const imageBlob = await ImageProcessor.process(photo, uploaderName);
@@ -768,6 +808,7 @@ const App = {
                 country: locationData.country,
                 city: locationData.city,
                 spotDate,
+                youtubeVideoId,
             });
             
             console.log("Step 4: Spot saved to Firestore! All done.");
@@ -901,6 +942,20 @@ const App = {
             if (!popupNote) return;
 
             const spotId = popupNote.dataset.spotId;
+            if (spotId && this.spotsData.has(spotId)) {
+                const spotData = this.spotsData.get(spotId);
+                MapService.map.closePopup();
+                this.onMarkerClick(spotId, spotData);
+            }
+        });
+    },
+
+    setupPopupYouTubeClickHandler() {
+        document.addEventListener('click', (e) => {
+            const popupYoutube = e.target.closest('.popup-youtube');
+            if (!popupYoutube) return;
+
+            const spotId = popupYoutube.dataset.spotId;
             if (spotId && this.spotsData.has(spotId)) {
                 const spotData = this.spotsData.get(spotId);
                 MapService.map.closePopup();

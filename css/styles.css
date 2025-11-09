@@ -61,6 +61,35 @@ body {
     object-fit: cover;
 }
 
+.youtube-marker {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.youtube-marker img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+}
+
+.youtube-play-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255, 0, 0, 0.9);
+    color: white;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
 .leaflet-control-attribution, .leaflet-control-custom {
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
