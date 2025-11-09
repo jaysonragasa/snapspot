@@ -387,6 +387,7 @@ const UIService = {
                 </div>
                 <button id="${showOnMapBtnId}" class="text-blue-400 hover:text-blue-300 text-sm mt-3">Show on Map</button>
                 `;
+            this.viewerInfo.style.pointerEvents = 'auto';
             
             if (spot.spotType === 'note') {
                 this.viewerImg.style.display = 'none';
@@ -419,6 +420,7 @@ const UIService = {
             this.imageViewer.classList.remove('modal-visible');
             this.viewerImg.src = "";
             this.viewerInfo.innerHTML = "";
+            this.viewerInfo.style.pointerEvents = 'none';
             // Remove any YouTube iframe to stop audio
             const iframe = this.viewerImg.parentNode.querySelector('iframe');
             if (iframe) iframe.remove();
