@@ -68,6 +68,7 @@ const FirebaseService = {
     auth: null,
     db: null,
     userId: null,
+    currentUser: null,
 
     async init(onAuthStateChangeCallback) {
         try {
@@ -75,22 +76,57 @@ const FirebaseService = {
             this.auth = firebase.auth();
             this.db = firebase.firestore();
 
-            this.auth.onAuthStateChanged((user) => {
+            this.auth.onAuthStateChanged(async (user) => {
                 if (user) {
                     this.userId = user.uid;
+                    this.currentUser = user;
                     console.log("User authenticated:", this.userId);
-                    onAuthStateChangeCallback(this.userId);
+                    onAuthStateChangeCallback(user);
+                } else {
+                    this.userId = null;
+                    this.currentUser = null;
+                    onAuthStateChangeCallback(null);
                 }
             });
-
-            if (Config.initialAuthToken) {
-                await this.auth.signInWithCustomToken(Config.initialAuthToken);
-            } else {
-                await this.auth.signInAnonymously();
-            }
         } catch (error) {
             console.error("Firebase initialization failed:", error);
         }
+    },
+
+    async signUp(email, password, name) {
+        const userCredential = await this.auth.createUserWithEmailAndPassword(email, password);
+        await userCredential.user.sendEmailVerification();
+        await this.db.collection('users').doc(userCredential.user.uid).set({
+            email,
+            name,
+            role: 'standard',
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        return userCredential;
+    },
+
+    async signIn(email, password) {
+        return this.auth.signInWithEmailAndPassword(email, password);
+    },
+
+    async signOut() {
+        return this.auth.signOut();
+    },
+
+    async getUserData(uid) {
+        const doc = await this.db.collection('users').doc(uid).get();
+        return doc.exists ? doc.data() : null;
+    },
+
+    async getUserSpots(uid) {
+        const spotsCollection = this.db.collection('artifacts').doc(Config.appId).collection('public').doc('data').collection('spots');
+        const snapshot = await spotsCollection.where('authorId', '==', uid).get();
+        return snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
+    },
+
+    async deleteSpot(spotId) {
+        const spotRef = this.db.collection('artifacts').doc(Config.appId).collection('public').doc('data').collection('spots').doc(spotId);
+        return spotRef.delete();
     },
 
     listenForSpots(callback) {
@@ -283,6 +319,8 @@ const UIService = {
     bottomSheet: null, 
     bottomSheetContent: null,
     notificationBar: null, notificationMessage: null, closeNotificationBtn: null,
+    authModal: null, authBtn: null, profileBtn: null,
+    loginForm: null, signupForm: null, profileModal: null,
     
     init(onFormSubmit) {
         this.uploadModal = document.getElementById('upload-modal');
@@ -312,6 +350,13 @@ const UIService = {
         this.notificationBar = document.getElementById('notification-bar');
         this.notificationMessage = document.getElementById('notification-message');
         this.closeNotificationBtn = document.getElementById('close-notification-btn');
+        
+        this.authModal = document.getElementById('auth-modal');
+        this.authBtn = document.getElementById('auth-btn');
+        this.profileBtn = document.getElementById('profile-btn');
+        this.loginForm = document.getElementById('login-form');
+        this.signupForm = document.getElementById('signup-form');
+        this.profileModal = document.getElementById('profile-modal');
 
         document.getElementById('camera-icon-container').innerHTML = Config.icons.uploadCamera;
         document.getElementById('photo-icon-container').innerHTML = Config.icons.uploadPhoto;
@@ -352,6 +397,17 @@ const UIService = {
                 this.filePreview.textContent = '';
             }
         });
+        
+        // Auth event listeners
+        this.authBtn.addEventListener('click', () => this.toggleAuthModal(true));
+        document.getElementById('close-auth-modal').addEventListener('click', () => this.toggleAuthModal(false));
+        document.getElementById('close-profile-btn').addEventListener('click', () => this.toggleProfileModal(false));
+        document.getElementById('show-signup').addEventListener('click', () => this.switchAuthForm('signup'));
+        document.getElementById('show-login').addEventListener('click', () => this.switchAuthForm('login'));
+        document.getElementById('login-form-element').addEventListener('submit', App.handleLogin.bind(App));
+        document.getElementById('signup-form-element').addEventListener('submit', App.handleSignup.bind(App));
+        document.getElementById('toggle-login-password').addEventListener('click', () => this.togglePasswordVisibility('login-password'));
+        document.getElementById('toggle-signup-password').addEventListener('click', () => this.togglePasswordVisibility('signup-password'));
     },
 
     toggleUploadModal(show, latlng = null) {
@@ -562,6 +618,128 @@ const UIService = {
         } else {
             this.notificationBar.classList.remove('visible');
         }
+    },
+    
+    toggleAuthModal(show) {
+        if (show) {
+            this.authModal.classList.remove('modal-hidden');
+            this.authModal.classList.add('modal-visible');
+        } else {
+            this.authModal.classList.add('modal-hidden');
+            this.authModal.classList.remove('modal-visible');
+        }
+    },
+    
+    switchAuthForm(form) {
+        if (form === 'signup') {
+            this.loginForm.classList.add('hidden');
+            this.signupForm.classList.remove('hidden');
+        } else {
+            this.signupForm.classList.add('hidden');
+            this.loginForm.classList.remove('hidden');
+        }
+    },
+    
+    updateAuthButton(user) {
+        if (user && user.emailVerified) {
+            this.authBtn.textContent = 'Logout';
+            this.profileBtn.classList.remove('hidden');
+        } else {
+            this.authBtn.textContent = 'Login';
+            this.profileBtn.classList.add('hidden');
+        }
+    },
+    
+    toggleProfileModal(show) {
+        if (show) {
+            this.profileModal.classList.remove('modal-hidden');
+            this.profileModal.classList.add('modal-visible');
+        } else {
+            this.profileModal.classList.add('modal-hidden');
+            this.profileModal.classList.remove('modal-visible');
+        }
+    },
+    
+    validatePassword(password) {
+        const hasUpper = /[A-Z]/.test(password);
+        const hasLower = /[a-z]/.test(password);
+        const hasNumber = /\d/.test(password);
+        const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+        return hasUpper && hasLower && hasNumber && hasSpecial;
+    },
+    
+    validateEmail(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    },
+    
+    showLoading() {
+        document.getElementById('loading-indicator').classList.remove('hidden');
+    },
+    
+    hideLoading() {
+        document.getElementById('loading-indicator').classList.add('hidden');
+    },
+    
+    togglePasswordVisibility(inputId) {
+        const input = document.getElementById(inputId);
+        const isPassword = input.type === 'password';
+        input.type = isPassword ? 'text' : 'password';
+    },
+    
+    displayUserProfile(userData, userSpots, onDeleteSpot) {
+        const profileContent = document.getElementById('profile-content');
+        const userSpotsGrid = document.getElementById('user-spots-grid');
+        
+        profileContent.innerHTML = `
+            <div class="text-center mb-6">
+                <h3 class="text-xl font-bold">${userData.name}</h3>
+                <p class="text-gray-300">${userData.email}</p>
+                <p class="text-sm text-gray-400">Total Spots: ${userSpots.length}</p>
+            </div>
+        `;
+        
+        userSpotsGrid.innerHTML = '';
+        
+        if (userSpots.length === 0) {
+            userSpotsGrid.innerHTML = '<p class="text-center text-gray-400 col-span-full">No spots shared yet.</p>';
+            return;
+        }
+        
+        userSpots.forEach(spot => {
+            const spotElement = document.createElement('div');
+            spotElement.className = 'relative group cursor-pointer';
+            
+            if (spot.data.spotType === 'note') {
+                const bgColor = Utils.getRandomHexColor();
+                const textColor = Utils.getContrastColor(bgColor);
+                spotElement.innerHTML = `
+                    <div class="w-full h-24 rounded-lg flex items-center justify-center p-2 text-center text-xs" style="background-color: ${bgColor}; color: ${textColor};">
+                        ${Utils.truncateText(spot.data.description, 40)}
+                    </div>
+                    <button class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                `;
+            } else {
+                spotElement.innerHTML = `
+                    <img src="${spot.data.photoDataUrl}" class="w-full h-24 object-cover rounded-lg">
+                    <button class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                `;
+            }
+            
+            const deleteBtn = spotElement.querySelector('button');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    onDeleteSpot(spot.id);
+                });
+            }
+            
+            spotElement.addEventListener('click', () => {
+                this.toggleProfileModal(false);
+                MapService.panTo(spot.data.location);
+            });
+            
+            userSpotsGrid.appendChild(spotElement);
+        });
     }
 };
 
@@ -689,10 +867,13 @@ const App = {
         this.setupPopupNoteClickHandler();
         this.setupPopupYouTubeClickHandler();
         UIService.closeNotificationBtn.addEventListener('click', () => this.hideNotification());
+        UIService.authBtn.addEventListener('click', () => this.handleAuthButton());
+        UIService.profileBtn.addEventListener('click', () => this.handleProfile());
         this.showCurrentUserLocation();
     },
 
-    onAuthStateChange(userId) {
+    onAuthStateChange(user) {
+        UIService.updateAuthButton(user);
         FirebaseService.listenForSpots(this.onSpotsUpdate.bind(this));
     },
 
@@ -714,7 +895,120 @@ const App = {
             MapService.map.closePopup();
             return;
         }
+        
         UIService.toggleUploadModal(true, e.latlng);
+    },
+    
+    async handleLogin(e) {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        
+        if (!UIService.validateEmail(email)) {
+            this.showNotification('Please enter a valid email address.');
+            return;
+        }
+        
+        if (!UIService.validatePassword(password)) {
+            this.showNotification('Password must contain uppercase, lowercase, number, and special character.');
+            return;
+        }
+        
+        UIService.showLoading();
+        try {
+            await FirebaseService.signIn(email, password);
+            await FirebaseService.currentUser.reload();
+            if (!FirebaseService.currentUser.emailVerified) {
+                this.showNotification('Please verify your email before sharing spots.');
+            } else {
+                UIService.toggleAuthModal(false);
+                UIService.updateAuthButton(FirebaseService.currentUser);
+                this.showNotification('Successfully logged in!');
+            }
+        } catch (error) {
+            let errorMessage = 'Login failed. Please try again.';
+            if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+                errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+            } else if (error.code === 'auth/user-disabled') {
+                errorMessage = 'This account has been disabled. Please contact support.';
+            } else if (error.code === 'auth/too-many-requests') {
+                errorMessage = 'Too many failed attempts. Please try again later.';
+            }
+            this.showNotification(errorMessage);
+        } finally {
+            UIService.hideLoading();
+        }
+    },
+    
+    async handleSignup(e) {
+        e.preventDefault();
+        const name = document.getElementById('signup-name').value;
+        const email = document.getElementById('signup-email').value;
+        const password = document.getElementById('signup-password').value;
+        
+        if (!UIService.validateEmail(email)) {
+            this.showNotification('Please enter a valid email address.');
+            return;
+        }
+        
+        if (!UIService.validatePassword(password)) {
+            this.showNotification('Password must contain uppercase, lowercase, number, and special character.');
+            return;
+        }
+        
+        UIService.showLoading();
+        try {
+            await FirebaseService.signUp(email, password, name);
+            UIService.switchAuthForm('login');
+            this.showNotification('Account created! Please check your email (including spam folder) to verify your account. You can now login once verified.');
+        } catch (error) {
+            this.showNotification('Signup failed: ' + error.message);
+        } finally {
+            UIService.hideLoading();
+        }
+    },
+    
+    async handleAuthButton() {
+        if (FirebaseService.currentUser) {
+            await FirebaseService.signOut();
+            this.showNotification('Logged out successfully.');
+        } else {
+            UIService.toggleAuthModal(true);
+        }
+    },
+    
+    async handleProfile() {
+        if (!FirebaseService.currentUser) return;
+        
+        UIService.showLoading();
+        try {
+            const userData = await FirebaseService.getUserData(FirebaseService.userId);
+            const userSpots = await FirebaseService.getUserSpots(FirebaseService.userId);
+            
+            UIService.displayUserProfile(userData, userSpots, this.onDeleteSpot.bind(this));
+            UIService.toggleProfileModal(true);
+        } catch (error) {
+            console.error('Error loading profile:', error);
+            this.showNotification('Error loading profile data.');
+        } finally {
+            UIService.hideLoading();
+        }
+    },
+    
+    async onDeleteSpot(spotId) {
+        if (confirm('Are you sure you want to delete this spot?')) {
+            UIService.showLoading();
+            try {
+                await FirebaseService.deleteSpot(spotId);
+                this.showNotification('Spot deleted successfully.');
+                this.handleProfile(); // Refresh profile
+            } catch (error) {
+                console.error('Error deleting spot:', error);
+                this.showNotification('Error deleting spot.');
+            } finally {
+                UIService.hideLoading();
+            }
+        }
     },
 
     onMarkerClick(spotId, spotData) {
@@ -765,11 +1059,17 @@ const App = {
             return;
         }
         
+        if (!FirebaseService.currentUser || !FirebaseService.currentUser.emailVerified) {
+            this.showNotification("Please sign in or log in first to share spots.");
+            UIService.toggleAuthModal(true);
+            return;
+        }
+        
         try {
             const { uploaderName, description, photo, latitude, longitude, spotDate } = UIService.getFormData();
             
             if (!description.trim()) {
-                alert("Please add a description or note.");
+                this.showNotification("Please add a description or note.");
                 return;
             }
 
@@ -780,10 +1080,10 @@ const App = {
             let spotType = 'note';
             let youtubeVideoId = null;
 
-            // Check for YouTube URL in description
-            const youtubeMatch = description.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+            // Check for YouTube URL in description (works with mixed text)
+            const youtubeMatch = description.match(/(?:https?:\/\/)?(?:www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
             if (youtubeMatch) {
-                youtubeVideoId = youtubeMatch[1];
+                youtubeVideoId = youtubeMatch[2];
                 photoDataUrl = `https://img.youtube.com/vi/${youtubeVideoId}/maxresdefault.jpg`;
                 spotType = 'youtube';
                 console.log("Step 1a: YouTube video detected.");
@@ -811,6 +1111,7 @@ const App = {
                 city: locationData.city,
                 spotDate,
                 youtubeVideoId,
+                userUid: FirebaseService.userId,
             });
             
             console.log("Step 4: Spot saved to Firestore! All done.");
@@ -819,7 +1120,7 @@ const App = {
 
         } catch (error) {
             console.error("Upload failed:", error);
-            alert("Something went wrong while saving your spot. Please try again.");
+            this.showNotification("Something went wrong while saving your spot. Please try again.");
         } finally {
             UIService.setFormSubmitting(false, 'Upload Spot');
         }

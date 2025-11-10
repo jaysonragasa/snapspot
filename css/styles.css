@@ -191,6 +191,7 @@ body {
     opacity: 0;
     transition: transform 0.4s ease, opacity 0.4s ease;
     pointer-events: none;
+    z-index: 10000;
 }
 #notification-bar.visible {
     transform: scale(1) translateY(0);
