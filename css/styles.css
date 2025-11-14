@@ -44,6 +44,10 @@ body {
 .note-marker-icon {
     background: #f97316;
 }
+.audio-marker-icon {
+    background: #3b82f6;
+    font-size: 16px;
+}
 
 .image-marker-icon {
     width: 55px;

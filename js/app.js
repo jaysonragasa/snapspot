@@ -209,16 +209,14 @@ const MapService = {
                 let iconSize = [36, 36];
                 let iconAnchor = [18, 18];
 
-                if (spot.data.spotType === 'note') {
-                    iconHtml = `<div class="custom-marker note-marker-icon">${Config.icons.noteMarker}</div>`;
-                } else if (spot.data.spotType === 'youtube' && spot.data.photoDataUrl) {
-                    iconHtml = `<div class="image-marker-icon youtube-marker"><img src="${spot.data.photoDataUrl}" alt="YouTube thumbnail"><div class="youtube-play-icon">▶</div></div>`;
-                    iconSize = [55, 55];
-                    iconAnchor = [27, 27];
-                } else if (Config.map.useImageAsMarker && spot.data.photoDataUrl) {
+                if (Config.map.useImageAsMarker && spot.data.photoDataUrl) {
                     iconHtml = `<div class="image-marker-icon"><img src="${spot.data.photoDataUrl}" alt="Spot thumbnail"></div>`;
                     iconSize = [55, 55];
                     iconAnchor = [27, 27];
+                } else if (spot.data.spotType === 'note') {
+                    iconHtml = `<div class="custom-marker note-marker-icon">${Config.icons.noteMarker}</div>`;
+                } else if (spot.data.spotType === 'audio') {
+                    iconHtml = `<div class="custom-marker audio-marker-icon">🎵</div>`;
                 } else {
                     iconHtml = `<div class="custom-marker camera-marker-icon">${Config.icons.cameraMarker}</div>`;
                 }
@@ -247,16 +245,55 @@ const MapService = {
                 } else if (spot.data.spotType === 'youtube') {
                     popupContent = `
                         <div class="text-center">
-                            <div class="relative cursor-pointer popup-youtube w-full" data-spot-id="${spot.id}" style="max-width: 200px; height: 150px; margin: 0 auto;">
+                            <div class="relative cursor-pointer popup-media" data-spot-id="${spot.id}" style="max-width: 200px; height: 150px; margin: 0 auto;">
                                 <img src="${spot.data.photoDataUrl}" alt="YouTube video" class="w-full h-full rounded-md object-cover">
                                 <div class="absolute inset-0 flex items-center justify-center rounded-md">
                                     <div class="bg-red-600 text-white rounded-full w-12 h-12 flex items-center justify-center text-xl shadow-lg">▶</div>
                                 </div>
-                                <a href="https://www.youtube.com/watch?v=${spot.data.youtubeVideoId}" target="_blank" class="absolute top-2 right-2 bg-black/50 text-white p-1 rounded hover:bg-black/70" onclick="event.stopPropagation()">
+                                <a href="${spot.data.mediaUrl}" target="_blank" class="absolute top-2 right-2 bg-black/50 text-white p-1 rounded hover:bg-black/70" onclick="event.stopPropagation()">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                 </a>
                             </div>
                             <p class="mt-2 text-sm text-gray-700">${Utils.truncateText(spot.data.description, 50) || 'Click to watch video.'}</p>
+                        </div>`;
+                } else if (spot.data.spotType === 'audio') {
+                    if (spot.data.photoDataUrl) {
+                        popupContent = `
+                            <div class="text-center cursor-pointer popup-media" data-spot-id="${spot.id}">
+                                <div class="relative" style="max-width: 200px; height: 150px; margin: 0 auto;">
+                                    <img src="${spot.data.photoDataUrl}" alt="Audio cover" class="w-full h-full rounded-md object-cover">
+                                    <div class="absolute inset-0 flex items-center justify-center rounded-md">
+                                        <div class="bg-blue-600 text-white rounded-full w-12 h-12 flex items-center justify-center text-xl shadow-lg">▶</div>
+                                    </div>
+                                </div>
+                                <p class="mt-2 text-sm text-gray-700">${Utils.truncateText(spot.data.description, 50) || 'Click to play audio.'}</p>
+                            </div>`;
+                    } else {
+                        popupContent = `
+                            <div class="text-center cursor-pointer popup-media" data-spot-id="${spot.id}">
+                                <div class="bg-blue-500 text-white rounded-lg p-4 mb-2">
+                                    <div class="text-2xl mb-2">🎵</div>
+                                    <p class="text-sm">${Utils.truncateText(spot.data.description, 50) || 'Audio File'}</p>
+                                </div>
+                            </div>`;
+                    }
+                } else if (spot.data.spotType === 'video') {
+                    popupContent = `
+                        <div class="text-center cursor-pointer popup-media" data-spot-id="${spot.id}">
+                            <div class="bg-purple-500 text-white rounded-lg p-4 mb-2 relative">
+                                <div class="text-2xl mb-2">🎥</div>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <div class="bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center">▶</div>
+                                </div>
+                            </div>
+                            <a href="${spot.data.mediaUrl}" target="_blank" class="text-purple-500 text-xs">Open Video</a>
+                            <p class="mt-2 text-sm text-gray-700">${Utils.truncateText(spot.data.description, 50) || 'Click to watch video.'}</p>
+                        </div>`;
+                } else if (spot.data.spotType === 'image' && spot.data.mediaUrl) {
+                    popupContent = `
+                        <div class="text-center">
+                            <img src="${spot.data.mediaUrl}" alt="${spot.data.description || 'Linked image'}" class="w-full h-auto rounded-md cursor-pointer popup-image" style="max-width: 200px; max-height: 200px; object-fit: cover;" data-spot-id="${spot.id}">
+                            <p class="mt-2 text-sm text-gray-700">${Utils.truncateText(spot.data.description, 50) || 'Click image to view full size.'}</p>
                         </div>`;
                 } else {
                     popupContent = `
@@ -434,33 +471,79 @@ const UIService = {
                 : '';
             
             const showOnMapBtnId = `show-on-map-${spotId}`;
+            this.viewerInfo.style.pointerEvents = 'auto';
+            
+            if (spot.spotType === 'note') {
+                this.viewerImg.style.display = 'none';
+            } else if (spot.spotType === 'youtube') {
+                if (spot.photoDataUrl && !spot.photoDataUrl.includes('youtube.com')) {
+                    this.viewerImg.style.display = 'block';
+                    this.viewerImg.src = spot.photoDataUrl;
+                } else {
+                    this.viewerImg.style.display = 'none';
+                }
+                const youtubePlayer = document.createElement('iframe');
+                youtubePlayer.src = `https://www.youtube.com/embed/${spot.mediaId}?autoplay=1`;
+                youtubePlayer.className = 'max-h-[70%] max-w-[90vw] rounded-lg shadow-2xl pointer-events-auto mt-4';
+                youtubePlayer.style.width = '800px';
+                youtubePlayer.style.height = '450px';
+                youtubePlayer.allow = 'autoplay; encrypted-media';
+                youtubePlayer.allowFullscreen = true;
+                this.viewerImg.parentNode.insertBefore(youtubePlayer, this.viewerImg);
+            } else if (spot.spotType === 'audio') {
+                if (spot.photoDataUrl) {
+                    this.viewerImg.style.display = 'block';
+                    this.viewerImg.src = spot.photoDataUrl;
+                } else {
+                    this.viewerImg.style.display = 'none';
+                }
+                const audioPlayer = document.createElement('audio');
+                audioPlayer.src = spot.mediaUrl;
+                audioPlayer.controls = true;
+                audioPlayer.autoplay = true;
+                audioPlayer.muted = false;
+                audioPlayer.className = 'max-w-[90vw] rounded-lg shadow-2xl pointer-events-auto mt-4';
+                audioPlayer.style.width = '400px';
+                this.viewerImg.parentNode.insertBefore(audioPlayer, this.viewerInfo);
+                audioPlayer.play().catch(() => console.log('Autoplay blocked'));
+            } else if (spot.spotType === 'video') {
+                if (spot.photoDataUrl) {
+                    this.viewerImg.style.display = 'block';
+                    this.viewerImg.src = spot.photoDataUrl;
+                } else {
+                    this.viewerImg.style.display = 'none';
+                }
+                const videoPlayer = document.createElement('video');
+                videoPlayer.src = spot.mediaUrl;
+                videoPlayer.controls = true;
+                videoPlayer.autoplay = true;
+                videoPlayer.className = 'max-h-[70%] max-w-[90vw] rounded-lg shadow-2xl pointer-events-auto mt-4';
+                videoPlayer.style.width = '800px';
+                videoPlayer.style.height = '450px';
+                this.viewerImg.parentNode.insertBefore(videoPlayer, this.viewerImg);
+            } else if (spot.spotType === 'image' && spot.mediaUrl) {
+                this.viewerImg.style.display = 'block';
+                this.viewerImg.src = spot.mediaUrl;
+            } else {
+                this.viewerImg.style.display = 'block';
+                this.viewerImg.src = spot.photoDataUrl;
+            }
+
+            // Add description and reactions after media
+            const linkifiedDescription = (spot.description || '').replace(
+                /(https?:\/\/[^\s]+)/g, 
+                '<a href="$1" target="_blank" class="text-blue-400 hover:text-blue-300 underline">$1</a>'
+            );
+            
             this.viewerInfo.innerHTML = `
                 <h3 class="font-bold text-lg">${spot.uploaderName}</h3>
-                <p class="text-gray-300 text-sm mt-1">${spot.description || ''}</p>
+                <p class="text-gray-300 text-sm mt-1">${linkifiedDescription}</p>
                 ${locationHtml}
                 <div id="reaction-bar" class="mt-3 flex items-center justify-center text-lg space-x-2">
                    ${this.generateReactionsHtml(spotId, spot)}
                 </div>
                 <button id="${showOnMapBtnId}" class="text-blue-400 hover:text-blue-300 text-sm mt-3">Show on Map</button>
                 `;
-            this.viewerInfo.style.pointerEvents = 'auto';
-            
-            if (spot.spotType === 'note') {
-                this.viewerImg.style.display = 'none';
-            } else if (spot.spotType === 'youtube') {
-                this.viewerImg.style.display = 'none';
-                const youtubePlayer = document.createElement('iframe');
-                youtubePlayer.src = `https://www.youtube.com/embed/${spot.youtubeVideoId}?autoplay=1`;
-                youtubePlayer.className = 'max-h-[70%] max-w-[90vw] rounded-lg shadow-2xl pointer-events-auto';
-                youtubePlayer.style.width = '800px';
-                youtubePlayer.style.height = '450px';
-                youtubePlayer.allow = 'autoplay; encrypted-media';
-                youtubePlayer.allowFullscreen = true;
-                this.viewerImg.parentNode.insertBefore(youtubePlayer, this.viewerImg);
-            } else {
-                this.viewerImg.style.display = 'block';
-                this.viewerImg.src = spot.photoDataUrl;
-            }
 
              setTimeout(() => {
                 document.getElementById(showOnMapBtnId).addEventListener('click', () => {
@@ -477,9 +560,13 @@ const UIService = {
             this.viewerImg.src = "";
             this.viewerInfo.innerHTML = "";
             this.viewerInfo.style.pointerEvents = 'none';
-            // Remove any YouTube iframe to stop audio
+            // Remove any media elements to stop playback
             const iframe = this.viewerImg.parentNode.querySelector('iframe');
+            const audio = this.viewerImg.parentNode.querySelector('audio');
+            const video = this.viewerImg.parentNode.querySelector('video');
             if (iframe) iframe.remove();
+            if (audio) audio.remove();
+            if (video) video.remove();
         }
     },
 
@@ -502,7 +589,11 @@ const UIService = {
             this.galleryGrid.innerHTML = '';
             spots.forEach(spot => {
                 let galleryItem;
-                if (spot.data.spotType === 'note') {
+                if (spot.data.photoDataUrl) {
+                    galleryItem = document.createElement('img');
+                    galleryItem.src = spot.data.photoDataUrl;
+                    galleryItem.className = 'w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity';
+                } else if (spot.data.spotType === 'note') {
                     galleryItem = document.createElement('div');
                     const bgColor = Utils.getRandomHexColor();
                     const textColor = Utils.getContrastColor(bgColor);
@@ -511,10 +602,18 @@ const UIService = {
                     galleryItem.style.backgroundColor = bgColor;
                     galleryItem.style.color = textColor;
                     galleryItem.textContent = Utils.truncateText(spot.data.description, 50);
+                } else if (spot.data.spotType === 'audio') {
+                    galleryItem = document.createElement('div');
+                    galleryItem.className = 'w-full h-full rounded-lg cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center bg-blue-500 text-white text-4xl';
+                    galleryItem.textContent = '🎵';
+                } else if (spot.data.spotType === 'video') {
+                    galleryItem = document.createElement('div');
+                    galleryItem.className = 'w-full h-full rounded-lg cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center bg-purple-500 text-white text-4xl';
+                    galleryItem.textContent = '🎥';
                 } else {
-                    galleryItem = document.createElement('img');
-                    galleryItem.src = spot.data.photoDataUrl;
-                    galleryItem.className = 'w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity';
+                    galleryItem = document.createElement('div');
+                    galleryItem.className = 'w-full h-full rounded-lg cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center bg-gray-500 text-white text-4xl';
+                    galleryItem.textContent = '📎';
                 }
                 
                 galleryItem.addEventListener('click', () => {
@@ -589,7 +688,11 @@ const UIService = {
 
         limitedSpots.forEach(spot => {
             let sheetItem;
-            if (spot.data.spotType === 'note') {
+            if (spot.data.photoDataUrl) {
+                sheetItem = document.createElement('img');
+                sheetItem.src = spot.data.photoDataUrl;
+                sheetItem.className = 'flex-shrink-0 w-24 h-24 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity';
+            } else if (spot.data.spotType === 'note') {
                 sheetItem = document.createElement('div');
                 const bgColor = Utils.getRandomHexColor();
                 const textColor = Utils.getContrastColor(bgColor);
@@ -598,10 +701,18 @@ const UIService = {
                 sheetItem.style.backgroundColor = bgColor;
                 sheetItem.style.color = textColor;
                 sheetItem.textContent = Utils.truncateText(spot.data.description, 40);
+            } else if (spot.data.spotType === 'audio') {
+                sheetItem = document.createElement('div');
+                sheetItem.className = 'flex-shrink-0 w-24 h-24 rounded-lg cursor-pointer hover:opacity-80 transition-opacity bg-blue-500 text-white p-2 flex flex-col justify-between';
+                sheetItem.innerHTML = `<div class="text-xs overflow-hidden">${Utils.truncateText(spot.data.description, 20)}</div><div class="text-lg text-center">🎵</div>`;
+            } else if (spot.data.spotType === 'video') {
+                sheetItem = document.createElement('div');
+                sheetItem.className = 'flex-shrink-0 w-24 h-24 rounded-lg cursor-pointer hover:opacity-80 transition-opacity bg-purple-500 text-white p-2 flex flex-col justify-between';
+                sheetItem.innerHTML = `<div class="text-xs overflow-hidden">${Utils.truncateText(spot.data.description, 20)}</div><div class="text-lg text-center">🎥</div>`;
             } else {
-                sheetItem = document.createElement('img');
-                sheetItem.src = spot.data.photoDataUrl;
-                sheetItem.className = 'flex-shrink-0 w-24 h-24 object-cover rounded-lg cursor-pointer hover:opacity-80 transition-opacity';
+                sheetItem = document.createElement('div');
+                sheetItem.className = 'flex-shrink-0 w-24 h-24 rounded-lg cursor-pointer hover:opacity-80 transition-opacity bg-gray-500 text-white p-2 flex flex-col justify-between';
+                sheetItem.innerHTML = `<div class="text-xs overflow-hidden">${Utils.truncateText(spot.data.description, 20)}</div><div class="text-lg text-center">📎</div>`;
             }
             
             sheetItem.addEventListener('click', () => {
@@ -718,9 +829,33 @@ const UIService = {
                     </div>
                     <button class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                 `;
-            } else {
+            } else if (spot.data.spotType === 'audio') {
+                spotElement.innerHTML = `
+                    <div class="w-full h-24 rounded-lg bg-blue-500 text-white p-2 flex flex-col justify-between">
+                        <div class="text-xs overflow-hidden">${Utils.truncateText(spot.data.description, 30)}</div>
+                        <div class="text-lg text-center">🎵</div>
+                    </div>
+                    <button class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                `;
+            } else if (spot.data.spotType === 'video' && !spot.data.photoDataUrl) {
+                spotElement.innerHTML = `
+                    <div class="w-full h-24 rounded-lg bg-purple-500 text-white p-2 flex flex-col justify-between">
+                        <div class="text-xs overflow-hidden">${Utils.truncateText(spot.data.description, 30)}</div>
+                        <div class="text-lg text-center">🎥</div>
+                    </div>
+                    <button class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                `;
+            } else if (spot.data.photoDataUrl) {
                 spotElement.innerHTML = `
                     <img src="${spot.data.photoDataUrl}" class="w-full h-24 object-cover rounded-lg">
+                    <button class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                `;
+            } else {
+                spotElement.innerHTML = `
+                    <div class="w-full h-24 rounded-lg bg-gray-500 text-white p-2 flex flex-col justify-between">
+                        <div class="text-xs overflow-hidden">${Utils.truncateText(spot.data.description, 30)}</div>
+                        <div class="text-lg text-center">📎</div>
+                    </div>
                     <button class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                 `;
             }
@@ -866,6 +1001,7 @@ const App = {
         this.setupPopupImageClickHandler();
         this.setupPopupNoteClickHandler();
         this.setupPopupYouTubeClickHandler();
+        this.setupPopupMediaClickHandler();
         UIService.closeNotificationBtn.addEventListener('click', () => this.hideNotification());
         UIService.authBtn.addEventListener('click', () => this.handleAuthButton());
         UIService.profileBtn.addEventListener('click', () => this.handleProfile());
@@ -1078,21 +1214,30 @@ const App = {
 
             let photoDataUrl = null;
             let spotType = 'note';
-            let youtubeVideoId = null;
+            let mediaUrl = null;
+            let mediaId = null;
 
-            // Check for YouTube URL in description (works with mixed text)
-            const youtubeMatch = description.match(/(?:https?:\/\/)?(?:www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-            if (youtubeMatch) {
-                youtubeVideoId = youtubeMatch[2];
-                photoDataUrl = `https://img.youtube.com/vi/${youtubeVideoId}/maxresdefault.jpg`;
-                spotType = 'youtube';
-                console.log("Step 1a: YouTube video detected.");
-            } else if (photo && photo.size > 0) {
-                spotType = 'image';
-                console.log("Step 1a: Processing image...");
+            // Process uploaded image first (priority)
+            if (photo && photo.size > 0) {
+                console.log("Step 1a: Processing uploaded image...");
                 const imageBlob = await ImageProcessor.process(photo, uploaderName);
                 photoDataUrl = await ImageProcessor.blobToBase64(imageBlob);
                 console.log("Step 2: Image processed and converted.");
+            }
+
+            // Smart link detection
+            const linkData = await this.detectMediaLinks(description);
+            if (linkData) {
+                spotType = linkData.type;
+                mediaUrl = linkData.url;
+                mediaId = linkData.id;
+                // Only use link thumbnail if no uploaded image
+                if (!photoDataUrl && linkData.thumbnail) {
+                    photoDataUrl = linkData.thumbnail;
+                }
+                console.log(`Step 1b: ${linkData.type} detected.`);
+            } else if (photoDataUrl) {
+                spotType = 'image';
             }
             
             console.log("Step 1b: Fetching location...");
@@ -1110,7 +1255,9 @@ const App = {
                 country: locationData.country,
                 city: locationData.city,
                 spotDate,
-                youtubeVideoId,
+                mediaUrl,
+                mediaId,
+                youtubeVideoId: spotType === 'youtube' ? mediaId : null,
                 userUid: FirebaseService.userId,
             });
             
@@ -1265,6 +1412,86 @@ const App = {
                 this.onMarkerClick(spotId, spotData);
             }
         });
+    },
+
+    setupPopupMediaClickHandler() {
+        document.addEventListener('click', (e) => {
+            const popupMedia = e.target.closest('.popup-media');
+            if (!popupMedia) return;
+
+            const spotId = popupMedia.dataset.spotId;
+            if (spotId && this.spotsData.has(spotId)) {
+                const spotData = this.spotsData.get(spotId);
+                MapService.map.closePopup();
+                this.onMarkerClick(spotId, spotData);
+            }
+        });
+    },
+
+    async detectMediaLinks(text) {
+        // Check YouTube first (no content-type needed)
+        const youtubeMatch = text.match(/(?:https?:\/\/)?(?:www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+        if (youtubeMatch) {
+            const id = youtubeMatch[2];
+            return {
+                type: 'youtube',
+                id,
+                url: `https://www.youtube.com/watch?v=${id}`,
+                thumbnail: `https://img.youtube.com/vi/${id}/maxresdefault.jpg`
+            };
+        }
+
+        // Check extension-based patterns
+        const extensionPatterns = {
+            audio: /(https?:\/\/[^\s]+\.(?:mp3|wav|ogg|m4a|aac|flac)(?:\?[^\s]*)?)/i,
+            image: /(https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp|bmp|svg)(?:\?[^\s]*)?)/i,
+            video: /(https?:\/\/[^\s]+\.(?:mp4|webm|avi|mov|wmv|flv|mkv)(?:\?[^\s]*)?)/i
+        };
+
+        for (const [type, regex] of Object.entries(extensionPatterns)) {
+            const match = text.match(regex);
+            if (match) {
+                const url = match[1];
+                return {
+                    type,
+                    id: url,
+                    url,
+                    thumbnail: type === 'image' ? url : null
+                };
+            }
+        }
+
+        // Check URLs without extensions using content-type or patterns
+        const urlMatch = text.match(/(https?:\/\/[^\s]+)/i);
+        if (urlMatch) {
+            const url = urlMatch[1];
+            
+            // Check for streaming patterns first
+            if (url.includes('icecast') || url.includes('shoutcast') || url.includes(':8000') || url.includes(':8080') || url.includes(':8443')) {
+                return { type: 'audio', id: url, url, thumbnail: null };
+            }
+            
+            try {
+                const response = await fetch(url, { method: 'HEAD', mode: 'cors' });
+                const contentType = response.headers.get('content-type') || '';
+                console.log('Content-type for', url, ':', contentType);
+                
+                if (contentType.startsWith('audio/')) {
+                    return { type: 'audio', id: url, url, thumbnail: null };
+                } else if (contentType.startsWith('video/')) {
+                    return { type: 'video', id: url, url, thumbnail: null };
+                } else if (contentType.startsWith('image/')) {
+                    return { type: 'image', id: url, url, thumbnail: url };
+                }
+            } catch (error) {
+                console.log('Content-type check failed:', error.message);
+                // Fallback: assume audio for streaming-like URLs
+                if (url.match(/:(8000|8080|8443|3000)\//)) {
+                    return { type: 'audio', id: url, url, thumbnail: null };
+                }
+            }
+        }
+        return null;
     },
 
     setupReactionHandler() {
